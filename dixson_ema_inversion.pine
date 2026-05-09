@@ -5,7 +5,6 @@ indicator("Dix$on EMA Inversion", overlay=true, max_boxes_count=500, max_lines_c
 // Input Groups
 //━━━━━━━━━━━━━━━━━━━━
 string GROUP_EMA = "EMA Settings"
-string GROUP_EMA_SMOOTH = "EMA Smoothing"
 string GROUP_FVG = "FVG Settings"
 string GROUP_IFVG = "IFVG Settings"
 string GROUP_ENTRY = "Entry Settings"
@@ -15,69 +14,61 @@ string GROUP_ALERTS = "Alert Settings"
 //━━━━━━━━━━━━━━━━━━━━
 // EMA Settings
 //━━━━━━━━━━━━━━━━━━━━
-emaTf = input.timeframe("10", "EMA Timeframe", group=GROUP_EMA, tooltip="Higher timeframe used to calculate EMA via request.security(). Default 10-minute for 1-minute execution context.")
-emaLength = input.int(9, "EMA Length", minval=1, group=GROUP_EMA, tooltip="Length of higher timeframe EMA. Shorter values react faster; default 9 for intraday reclaim/rejection flow.")
-emaSource = input.source(close, "EMA Source", group=GROUP_EMA, tooltip="Source series used for EMA calculation inside the selected higher timeframe.")
-showEma = input.bool(true, "Show EMA", group=GROUP_EMA, tooltip="Shows or hides the HTF EMA line on chart. Keep enabled for visual confirmation of reclaim/rejection.")
-emaColor = input.color(color.new(color.yellow, 0), "EMA Color", group=GROUP_EMA, tooltip="Display color for the EMA line.")
-emaWidth = input.int(2, "EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Visual line width of EMA. Does not affect signal logic.")
-i_mtf_mode = input.bool(true, "MTF Smoothed Mode", group=GROUP_EMA, tooltip="If enabled, the higher-timeframe EMA only updates on new HTF bars (and on the last bar), matching your reference MA/EMA logic.")
-shortEmaTf = input.timeframe("", "Short EMA Timeframe", group=GROUP_EMA, tooltip="Timeframe for the secondary shorter-term EMA. Default blank uses current chart timeframe.")
-shortEmaLength = input.int(31, "Short EMA Length", minval=1, group=GROUP_EMA, tooltip="Length for secondary EMA used for trend filter and EMA spread fill. Default 31.")
-shortEmaWidth = input.int(1, "Short EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Line width for short EMA. Default 1.")
-longEmaWidth = input.int(1, "Long EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Line width for main (long) EMA. Default 1.")
-bullTrendColor = input.color(color.new(color.lime, 0), "Bull Trend Color", group=GROUP_EMA, tooltip="EMA color when price is above that EMA and fill color when short EMA is above long EMA.")
-bearTrendColor = input.color(color.new(color.red, 0), "Bear Trend Color", group=GROUP_EMA, tooltip="EMA color when price is below that EMA and fill color when short EMA is below long EMA.")
-
-//━━━━━━━━━━━━━━━━━━━━
-// EMA Smoothing
-//━━━━━━━━━━━━━━━━━━━━
-enableEmaSmoothing = input.bool(true, "Enable EMA Smoothing", group=GROUP_EMA_SMOOTH, tooltip="Applies optional LTF smoothing to the HTF EMA for less stair-step appearance. Recommended ON for cleaner visuals.")
-emaSmoothLength = input.int(3, "EMA Smoothing Length", minval=1, group=GROUP_EMA_SMOOTH, tooltip="Length for smoothing filter. Small values (2-5) preserve responsiveness while reducing stair-steps.")
-emaSmoothType = input.string("EMA", "EMA Smoothing Type", options=["EMA", "SMA", "RMA", "WMA"], group=GROUP_EMA_SMOOTH, tooltip="Smoothing algorithm for visual EMA refinement.")
-useSmoothedForLogic = input.bool(false, "Use Smoothed EMA For Logic", group=GROUP_EMA_SMOOTH, tooltip="If OFF (recommended), logic uses raw non-repainting HTF EMA. If ON, entries/conditions use smoothed line values.")
+emaTf = input.timeframe("10", "EMA Timeframe", group=GROUP_EMA, tooltip="Higher timeframe used to calculate EMA via request.security(). Default 10-minute for 1-minute execution context.", display=display.none)
+emaLength = input.int(9, "EMA Length", minval=1, group=GROUP_EMA, tooltip="Length of higher timeframe EMA. Shorter values react faster; default 9 for intraday reclaim/rejection flow.", display=display.none)
+emaSource = input.source(close, "EMA Source", group=GROUP_EMA, tooltip="Source series used for EMA calculation inside the selected higher timeframe.", display=display.none)
+showEma = input.bool(true, "Show EMA", group=GROUP_EMA, tooltip="Shows or hides the HTF EMA line on chart. Keep enabled for visual confirmation of reclaim/rejection.", display=display.none)
+emaColor = input.color(color.new(color.yellow, 0), "EMA Color", group=GROUP_EMA, tooltip="Display color for the EMA line.", display=display.none)
+emaWidth = input.int(2, "EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Visual line width of EMA. Does not affect signal logic.", display=display.none)
+i_mtf_mode = input.bool(true, "MTF Smoothed Mode", group=GROUP_EMA, tooltip="If enabled, the higher-timeframe EMA only updates on new HTF bars (and on the last bar), matching your reference MA/EMA logic.", display=display.none)
+shortEmaTf = input.timeframe("", "Short EMA Timeframe", group=GROUP_EMA, tooltip="Timeframe for the secondary shorter-term EMA. Default blank uses current chart timeframe.", display=display.none)
+shortEmaLength = input.int(31, "Short EMA Length", minval=1, group=GROUP_EMA, tooltip="Length for secondary EMA used for trend filter and EMA spread fill. Default 31.", display=display.none)
+shortEmaWidth = input.int(1, "Short EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Line width for short EMA. Default 1.", display=display.none)
+longEmaWidth = input.int(1, "Long EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Line width for main (long) EMA. Default 1.", display=display.none)
+bullTrendColor = input.color(color.new(color.lime, 0), "Bull Trend Color", group=GROUP_EMA, tooltip="EMA color when price is above that EMA and fill color when short EMA is above long EMA.", display=display.none)
+bearTrendColor = input.color(color.new(color.red, 0), "Bear Trend Color", group=GROUP_EMA, tooltip="EMA color when price is below that EMA and fill color when short EMA is below long EMA.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // FVG Settings
 //━━━━━━━━━━━━━━━━━━━━
-showBullFvg = input.bool(true, "Show Bullish FVGs", group=GROUP_FVG, tooltip="Displays bullish FVG zones (potential bearish IFVG source) as boxes.")
-showBearFvg = input.bool(true, "Show Bearish FVGs", group=GROUP_FVG, tooltip="Displays bearish FVG zones (potential bullish IFVG source) as boxes.")
-bullFvgColor = input.color(color.new(color.lime, 0), "Bullish FVG Color", group=GROUP_FVG, tooltip="Base color for bullish FVG boxes.")
-bearFvgColor = input.color(color.new(color.red, 0), "Bearish FVG Color", group=GROUP_FVG, tooltip="Base color for bearish FVG boxes.")
-fvgTransparency = input.int(85, "FVG Transparency", minval=0, maxval=100, group=GROUP_FVG, tooltip="Opacity of FVG boxes. Higher values are more transparent.")
-extendFvgRight = input.bool(true, "Extend FVGs Right", group=GROUP_FVG, tooltip="Extends FVG zones into future bars for ongoing reference.")
-showMidline = input.bool(true, "Show Midline", group=GROUP_FVG, tooltip="Draws midpoint line inside each FVG box.")
-midlineStyleInput = input.string("Dotted", "Midline Style", options=["Solid", "Dashed", "Dotted"], group=GROUP_FVG, tooltip="Line style for FVG midpoint.")
-midlineColor = input.color(color.new(color.gray, 0), "Midline Color", group=GROUP_FVG, tooltip="Color used for FVG midpoint line.")
-fvgDisplayCap = input.int(2, "FVG Display Cap", minval=0, group=GROUP_DISPLAY, tooltip="Max number of bullish and bearish FVGs displayed per side. 0 = unlimited. Default 2 for clarity.")
+showBullFvg = input.bool(true, "Show Bullish FVGs", group=GROUP_FVG, tooltip="Displays bullish FVG zones (potential bearish IFVG source) as boxes.", display=display.none)
+showBearFvg = input.bool(true, "Show Bearish FVGs", group=GROUP_FVG, tooltip="Displays bearish FVG zones (potential bullish IFVG source) as boxes.", display=display.none)
+bullFvgColor = input.color(color.new(color.lime, 0), "Bullish FVG Color", group=GROUP_FVG, tooltip="Base color for bullish FVG boxes.", display=display.none)
+bearFvgColor = input.color(color.new(color.red, 0), "Bearish FVG Color", group=GROUP_FVG, tooltip="Base color for bearish FVG boxes.", display=display.none)
+fvgTransparency = input.int(85, "FVG Transparency", minval=0, maxval=100, group=GROUP_FVG, tooltip="Opacity of FVG boxes. Higher values are more transparent.", display=display.none)
+extendFvgRight = input.bool(true, "Extend FVGs Right", group=GROUP_FVG, tooltip="Extends FVG zones into future bars for ongoing reference.", display=display.none)
+showMidline = input.bool(true, "Show Midline", group=GROUP_FVG, tooltip="Draws midpoint line inside each FVG box.", display=display.none)
+midlineStyleInput = input.string("Dotted", "Midline Style", options=["Solid", "Dashed", "Dotted"], group=GROUP_FVG, tooltip="Line style for FVG midpoint.", display=display.none)
+midlineColor = input.color(color.new(color.gray, 0), "Midline Color", group=GROUP_FVG, tooltip="Color used for FVG midpoint line.", display=display.none)
+fvgDisplayCap = input.int(2, "FVG Display Cap", minval=0, group=GROUP_DISPLAY, tooltip="Max number of bullish and bearish FVGs displayed per side. 0 = unlimited. Default 2 for clarity.", display=display.none)
 
-fvgSizeFilterEnabled = input.bool(false, "FVG Size Filter Enabled", group=GROUP_FVG, tooltip="When enabled, only FVGs meeting minimum size threshold are eligible for logic/visual creation.")
-fvgSizeMode = input.string("Points/Dollars", "FVG Size Mode", options=["Points/Dollars", "Ticks", "Percent", "ATR Multiple"], group=GROUP_FVG, tooltip="Measurement mode for minimum FVG size filter.")
-minFvgSize = input.float(0.0, "Minimum FVG Size", minval=0.0, step=0.01, group=GROUP_FVG, tooltip="Minimum FVG size threshold in selected mode. Set 0 to effectively disable strict filtering.")
-atrLength = input.int(14, "ATR Length", minval=1, group=GROUP_FVG, tooltip="ATR length used only when FVG Size Mode = ATR Multiple.")
+fvgSizeFilterEnabled = input.bool(false, "FVG Size Filter Enabled", group=GROUP_FVG, tooltip="When enabled, only FVGs meeting minimum size threshold are eligible for logic/visual creation.", display=display.none)
+fvgSizeMode = input.string("Points/Dollars", "FVG Size Mode", options=["Points/Dollars", "Ticks", "Percent", "ATR Multiple"], group=GROUP_FVG, tooltip="Measurement mode for minimum FVG size filter.", display=display.none)
+minFvgSize = input.float(0.0, "Minimum FVG Size", minval=0.0, step=0.01, group=GROUP_FVG, tooltip="Minimum FVG size threshold in selected mode. Set 0 to effectively disable strict filtering.", display=display.none)
+atrLength = input.int(14, "ATR Length", minval=1, group=GROUP_FVG, tooltip="ATR length used only when FVG Size Mode = ATR Multiple.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // IFVG Settings
 //━━━━━━━━━━━━━━━━━━━━
-ifvgConfirmBarLimit = input.int(0, "IFVG Confirmation Bar Limit", minval=0, group=GROUP_IFVG, tooltip="Maximum bars allowed between FVG creation and inversion confirmation. 0 = no limit.")
+ifvgConfirmBarLimit = input.int(0, "IFVG Confirmation Bar Limit", minval=0, group=GROUP_IFVG, tooltip="Maximum bars allowed between FVG creation and inversion confirmation. 0 = no limit.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Entry Settings
 //━━━━━━━━━━━━━━━━━━━━
-emaTouchType = input.string("Either", "EMA Touch Type", options=["Wick Touch", "Body Touch", "Either"], group=GROUP_ENTRY, tooltip="Defines what counts as EMA interaction: wick cross, body intersection, or either.")
-emaTouchBarsBefore = input.int(3, "EMA Touch Bars Before IFVG", minval=0, group=GROUP_ENTRY, tooltip="How many bars BEFORE IFVG confirmation are allowed to contain EMA touch for entry qualification.")
-emaTouchBarsAfter = input.int(3, "EMA Touch Bars After IFVG", minval=0, group=GROUP_ENTRY, tooltip="How many bars AFTER IFVG confirmation are allowed for EMA touch/reclaim completion.")
-showEntries = input.bool(true, "Show Entries", group=GROUP_ENTRY, tooltip="Show bullish/bearish entry markers on chart.")
-bullEntryColor = input.color(color.new(color.aqua, 0), "Bullish Entry Color", group=GROUP_ENTRY, tooltip="Color of bullish entry marker.")
-bearEntryColor = input.color(color.new(color.orange, 0), "Bearish Entry Color", group=GROUP_ENTRY, tooltip="Color of bearish entry marker.")
-entryLabelSizeInput = input.string("Tiny", "Entry Label Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=GROUP_ENTRY, tooltip="Visual size of entry triangles.")
-entryMarkerOffsetAtrMult = input.float(0.2, "Entry Marker Offset (ATR Mult)", minval=0.0, step=0.05, group=GROUP_ENTRY, tooltip="Vertical offset applied to entry triangles so they are clearly separated from candles. Uses ATR multiple; default 0.2.")
-entryDisplayCap = input.int(10, "Entry Display Cap", minval=0, group=GROUP_DISPLAY, tooltip="Maximum number of bullish and bearish entry markers retained per side. 0 = unlimited.")
+emaTouchType = input.string("Either", "EMA Touch Type", options=["Wick Touch", "Body Touch", "Either"], group=GROUP_ENTRY, tooltip="Defines what counts as EMA interaction: wick cross, body intersection, or either.", display=display.none)
+emaTouchBarsBefore = input.int(3, "EMA Touch Bars Before IFVG", minval=0, group=GROUP_ENTRY, tooltip="How many bars BEFORE IFVG confirmation are allowed to contain EMA touch for entry qualification.", display=display.none)
+emaTouchBarsAfter = input.int(3, "EMA Touch Bars After IFVG", minval=0, group=GROUP_ENTRY, tooltip="How many bars AFTER IFVG confirmation are allowed for EMA touch/reclaim completion.", display=display.none)
+showEntries = input.bool(true, "Show Entries", group=GROUP_ENTRY, tooltip="Show bullish/bearish entry markers on chart.", display=display.none)
+bullEntryColor = input.color(color.new(color.aqua, 0), "Bullish Entry Color", group=GROUP_ENTRY, tooltip="Color of bullish entry marker.", display=display.none)
+bearEntryColor = input.color(color.new(color.orange, 0), "Bearish Entry Color", group=GROUP_ENTRY, tooltip="Color of bearish entry marker.", display=display.none)
+entryLabelSizeInput = input.string("Tiny", "Entry Label Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=GROUP_ENTRY, tooltip="Visual size of entry triangles.", display=display.none)
+entryMarkerOffsetAtrMult = input.float(0.2, "Entry Marker Offset (ATR Mult)", minval=0.0, step=0.05, group=GROUP_ENTRY, tooltip="Vertical offset applied to entry triangles so they are clearly separated from candles. Uses ATR multiple; default 0.2.", display=display.none)
+entryDisplayCap = input.int(10, "Entry Display Cap", minval=0, group=GROUP_DISPLAY, tooltip="Maximum number of bullish and bearish entry markers retained per side. 0 = unlimited.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alert Settings
 //━━━━━━━━━━━━━━━━━━━━
-enableAlerts = input.bool(true, "Enable Alert Conditions", group=GROUP_ALERTS, tooltip="Master visibility/organization toggle for alertcondition usage in alert dialog. Does not affect plotted logic.")
+enableAlerts = input.bool(true, "Enable Alert Conditions", group=GROUP_ALERTS, tooltip="Master visibility/organization toggle for alertcondition usage in alert dialog. Does not affect plotted logic.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Helpers
@@ -101,12 +92,6 @@ f_getConvertedDense(string tf, series float src, int len, string maType) =>
     avg = f_getAvg(maType, src, len)
     tf == "" ? avg : request.security(syminfo.tickerid, tf, avg, barmerge.gaps_off, barmerge.lookahead_on)
 
-f_smooth(series float src, string smoothType, int len) =>
-    emaV = ta.ema(src, len)
-    smaV = ta.sma(src, len)
-    rmaV = ta.rma(src, len)
-    wmaV = ta.wma(src, len)
-    smoothType == "EMA" ? emaV : smoothType == "SMA" ? smaV : smoothType == "RMA" ? rmaV : wmaV
 
 f_midlineStyle(string style) =>
     style == "Solid" ? line.style_solid : style == "Dashed" ? line.style_dashed : line.style_dotted
@@ -158,9 +143,8 @@ atrValue = ta.atr(atrLength)
 rawHtfEma = f_getConverted(emaTf, emaSource, emaLength, "EMA")
 rawHtfEmaDense = f_getConvertedDense(emaTf, emaSource, emaLength, "EMA")
 rawHtfEmaLogic = i_mtf_mode ? nz(rawHtfEma, rawHtfEmaDense) : rawHtfEma
-smoothedEma = enableEmaSmoothing ? f_smooth(rawHtfEmaLogic, emaSmoothType, emaSmoothLength) : rawHtfEmaLogic
-logicEma = useSmoothedForLogic ? smoothedEma : rawHtfEmaLogic
-plotEma = enableEmaSmoothing ? smoothedEma : rawHtfEma
+logicEma = rawHtfEmaLogic
+plotEma = rawHtfEmaLogic
 
 rawShortEma = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA")
 rawShortEmaDense = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA")
@@ -171,8 +155,8 @@ shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "HTF EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaLogic : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-fillColor = shortEmaLogic >= logicEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill")
+fillColor = shortEmaLogic >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+fill(longPlot, shortPlot, color=showEma and not na(plotEma) and not na(shortEmaLogic) ? fillColor : na, title="EMA Spread Fill")
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
