@@ -75,9 +75,11 @@ enableAlerts = input.bool(true, "Enable Alert Conditions", group=GROUP_ALERTS, t
 // Helpers
 //━━━━━━━━━━━━━━━━━━━━
 f_smooth(series float src, string smoothType, int len) =>
-    smoothType == "EMA" ? ta.ema(src, len) :
-     smoothType == "SMA" ? ta.sma(src, len) :
-     smoothType == "RMA" ? ta.rma(src, len) : ta.wma(src, len)
+    emaV = ta.ema(src, len)
+    smaV = ta.sma(src, len)
+    rmaV = ta.rma(src, len)
+    wmaV = ta.wma(src, len)
+    smoothType == "EMA" ? emaV : smoothType == "SMA" ? smaV : smoothType == "RMA" ? rmaV : wmaV
 
 f_midlineStyle(string style) =>
     style == "Solid" ? line.style_solid : style == "Dashed" ? line.style_dashed : line.style_dotted
@@ -246,13 +248,15 @@ if latestBearActive and not latestBearIfvgConfirmed
 // Entry Logic
 //━━━━━━━━━━━━━━━━━━━━
 emaTouched = f_touchEma(logicEma, emaTouchType)
+barsSinceEmaTouch = ta.barssince(emaTouched)
+lastEmaTouchBar = barsSinceEmaTouch >= 0 ? bar_index - barsSinceEmaTouch : na
 labelSz = f_labelSize(entryLabelSizeInput)
 
 if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone
     barsSinceIfvg = bar_index - latestBearIfvgBar
     inAfterWindow = barsSinceIfvg >= 0 and barsSinceIfvg <= emaTouchBarsAfter
     validBeforeStart = math.max(latestBearFvgBar, latestBearIfvgBar - emaTouchBarsBefore)
-    touchBeforeOrAtIfvg = ta.barssince(emaTouched) >= 0 and (bar_index - ta.barssince(emaTouched)) >= validBeforeStart and (bar_index - ta.barssince(emaTouched)) <= latestBearIfvgBar
+    touchBeforeOrAtIfvg = not na(lastEmaTouchBar) and lastEmaTouchBar >= validBeforeStart and lastEmaTouchBar <= latestBearIfvgBar
     touchAfterOrNow = inAfterWindow and emaTouched
     emaWindowOk = touchBeforeOrAtIfvg or touchAfterOrNow
     reclaimUp = close > logicEma and close[1] <= logicEma[1]
@@ -267,7 +271,7 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone
     barsSinceIfvg = bar_index - latestBullIfvgBar
     inAfterWindow = barsSinceIfvg >= 0 and barsSinceIfvg <= emaTouchBarsAfter
     validBeforeStart = math.max(latestBullFvgBar, latestBullIfvgBar - emaTouchBarsBefore)
-    touchBeforeOrAtIfvg = ta.barssince(emaTouched) >= 0 and (bar_index - ta.barssince(emaTouched)) >= validBeforeStart and (bar_index - ta.barssince(emaTouched)) <= latestBullIfvgBar
+    touchBeforeOrAtIfvg = not na(lastEmaTouchBar) and lastEmaTouchBar >= validBeforeStart and lastEmaTouchBar <= latestBullIfvgBar
     touchAfterOrNow = inAfterWindow and emaTouched
     emaWindowOk = touchBeforeOrAtIfvg or touchAfterOrNow
     reclaimDown = close < logicEma and close[1] >= logicEma[1]
