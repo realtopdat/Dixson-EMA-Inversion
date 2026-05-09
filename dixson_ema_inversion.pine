@@ -115,6 +115,15 @@ f_cleanupLabels(array<label> labelsArr, int cap) =>
             lb = array.shift(labelsArr)
             label.delete(lb)
 
+
+
+f_createEntryFvgVisual(int leftBar, float top, float bottom, color fvgColor, int transp, bool drawMid, color midColor, string midStyle) =>
+    newEntryBox = box.new(leftBar, top, bar_index, bottom, border_color=color.new(fvgColor, 0), bgcolor=color.new(fvgColor, transp), extend=extend.none)
+    line newEntryMid = na
+    if drawMid
+        mid = (top + bottom) * 0.5
+        newEntryMid := line.new(leftBar, mid, bar_index, mid, color=midColor, style=f_midlineStyle(midStyle), extend=extend.none)
+    [newEntryBox, newEntryMid]
 //━━━━━━━━━━━━━━━━━━━━
 // Core Series
 //━━━━━━━━━━━━━━━━━━━━
@@ -135,6 +144,10 @@ var array<box> bearBoxes = array.new<box>()
 var array<line> bearMidlines = array.new<line>()
 var array<label> bullEntries = array.new<label>()
 var array<label> bearEntries = array.new<label>()
+var array<box> bullEntryFvgBoxes = array.new<box>()
+var array<line> bullEntryFvgMidlines = array.new<line>()
+var array<box> bearEntryFvgBoxes = array.new<box>()
+var array<line> bearEntryFvgMidlines = array.new<line>()
 
 var int latestBullFvgBar = na
 var float latestBullTop = na
@@ -266,6 +279,10 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone
         if showEntries
             lb = label.new(bar_index, low, "", style=label.style_triangleup, color=bullEntryColor, textcolor=bullEntryColor, size=labelSz)
             array.push(bullEntries, lb)
+            [entryFvgBox, entryFvgMid] = f_createEntryFvgVisual(latestBearFvgBar - 2, latestBearTop, latestBearBottom, bearFvgColor, fvgTransparency, showMidline, midlineColor, midlineStyleInput)
+            array.push(bullEntryFvgBoxes, entryFvgBox)
+            if not na(entryFvgMid)
+                array.push(bullEntryFvgMidlines, entryFvgMid)
 
 if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone
     barsSinceIfvg = bar_index - latestBullIfvgBar
@@ -281,9 +298,15 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone
         if showEntries
             lb = label.new(bar_index, high, "", style=label.style_triangledown, color=bearEntryColor, textcolor=bearEntryColor, size=labelSz)
             array.push(bearEntries, lb)
+            [entryFvgBox, entryFvgMid] = f_createEntryFvgVisual(latestBullFvgBar - 2, latestBullTop, latestBullBottom, bullFvgColor, fvgTransparency, showMidline, midlineColor, midlineStyleInput)
+            array.push(bearEntryFvgBoxes, entryFvgBox)
+            if not na(entryFvgMid)
+                array.push(bearEntryFvgMidlines, entryFvgMid)
 
 f_cleanupLabels(bullEntries, entryDisplayCap)
 f_cleanupLabels(bearEntries, entryDisplayCap)
+f_cleanupVisuals(bullEntryFvgBoxes, bullEntryFvgMidlines, entryDisplayCap)
+f_cleanupVisuals(bearEntryFvgBoxes, bearEntryFvgMidlines, entryDisplayCap)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
