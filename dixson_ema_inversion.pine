@@ -64,7 +64,8 @@ emaTouchBarsAfter = input.int(3, "EMA Touch Bars After IFVG", minval=0, group=GR
 showEntries = input.bool(true, "Show Entries", group=GROUP_ENTRY, tooltip="Show bullish/bearish entry markers on chart.")
 bullEntryColor = input.color(color.new(color.aqua, 0), "Bullish Entry Color", group=GROUP_ENTRY, tooltip="Color of bullish entry marker.")
 bearEntryColor = input.color(color.new(color.orange, 0), "Bearish Entry Color", group=GROUP_ENTRY, tooltip="Color of bearish entry marker.")
-entryLabelSizeInput = input.string("Normal", "Entry Label Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=GROUP_ENTRY, tooltip="Visual size of entry triangles.")
+entryLabelSizeInput = input.string("Tiny", "Entry Label Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=GROUP_ENTRY, tooltip="Visual size of entry triangles.")
+entryMarkerOffsetAtrMult = input.float(0.2, "Entry Marker Offset (ATR Mult)", minval=0.0, step=0.05, group=GROUP_ENTRY, tooltip="Vertical offset applied to entry triangles so they are clearly separated from candles. Uses ATR multiple; default 0.2.")
 entryDisplayCap = input.int(10, "Entry Display Cap", minval=0, group=GROUP_DISPLAY, tooltip="Maximum number of bullish and bearish entry markers retained per side. 0 = unlimited.")
 
 //━━━━━━━━━━━━━━━━━━━━
@@ -176,6 +177,7 @@ var bool latestBullActive = false
 var bool latestBullIfvgConfirmed = false
 var int latestBullIfvgBar = na
 var bool latestBullSignalDone = false
+var box latestBullBox = na
 
 var int latestBearFvgBar = na
 var float latestBearTop = na
@@ -184,6 +186,7 @@ var bool latestBearActive = false
 var bool latestBearIfvgConfirmed = false
 var int latestBearIfvgBar = na
 var bool latestBearSignalDone = false
+var box latestBearBox = na
 
 var bool bullIfvgConfirmedAlert = false
 var bool bearIfvgConfirmedAlert = false
@@ -220,6 +223,7 @@ if bullFvgFound
             rightEdge = extendFvgRight ? bar_index + 1 : bar_index
             newBox = box.new(bar_index - 2, fvgTop, rightEdge, fvgBottom, border_color=color.new(bullFvgColor, 0), bgcolor=color.new(bullFvgColor, fvgTransparency), extend=extendFvgRight ? extend.right : extend.none)
             array.push(bullBoxes, newBox)
+            latestBullBox := newBox
             if showMidline
                 mid = (fvgTop + fvgBottom) * 0.5
                 newLine = line.new(bar_index - 2, mid, rightEdge, mid, color=midlineColor, style=f_midlineStyle(midlineStyleInput), extend=extendFvgRight ? extend.right : extend.none)
@@ -244,6 +248,7 @@ if bearFvgFound
             rightEdge = extendFvgRight ? bar_index + 1 : bar_index
             newBox = box.new(bar_index - 2, fvgTop, rightEdge, fvgBottom, border_color=color.new(bearFvgColor, 0), bgcolor=color.new(bearFvgColor, fvgTransparency), extend=extendFvgRight ? extend.right : extend.none)
             array.push(bearBoxes, newBox)
+            latestBearBox := newBox
             if showMidline
                 mid = (fvgTop + fvgBottom) * 0.5
                 newLine = line.new(bar_index - 2, mid, rightEdge, mid, color=midlineColor, style=f_midlineStyle(midlineStyleInput), extend=extendFvgRight ? extend.right : extend.none)
@@ -263,6 +268,9 @@ if latestBullActive and not latestBullIfvgConfirmed
             latestBullIfvgConfirmed := true
             latestBullIfvgBar := bar_index
             bearIfvgConfirmedAlert := true
+            if not na(latestBullBox)
+                box.set_bgcolor(latestBullBox, color.new(bearFvgColor, fvgTransparency))
+                box.set_border_color(latestBullBox, color.new(bearFvgColor, 0))
     else
         latestBullActive := false
 
@@ -274,6 +282,9 @@ if latestBearActive and not latestBearIfvgConfirmed
             latestBearIfvgConfirmed := true
             latestBearIfvgBar := bar_index
             bullIfvgConfirmedAlert := true
+            if not na(latestBearBox)
+                box.set_bgcolor(latestBearBox, color.new(bullFvgColor, fvgTransparency))
+                box.set_border_color(latestBearBox, color.new(bullFvgColor, 0))
     else
         latestBearActive := false
 
@@ -284,6 +295,7 @@ emaTouched = f_touchEma(logicEma, emaTouchType)
 barsSinceEmaTouch = ta.barssince(emaTouched)
 lastEmaTouchBar = barsSinceEmaTouch >= 0 ? bar_index - barsSinceEmaTouch : na
 labelSz = f_labelSize(entryLabelSizeInput)
+entryOffset = math.max(syminfo.mintick * 10.0, atrValue * entryMarkerOffsetAtrMult)
 
 if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone
     barsSinceIfvg = bar_index - latestBearIfvgBar
@@ -297,7 +309,7 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone
         latestBearSignalDone := true
         bullEntryAlert := true
         if showEntries
-            lb = label.new(bar_index, low, "", style=label.style_triangleup, color=bullEntryColor, textcolor=bullEntryColor, size=labelSz)
+            lb = label.new(bar_index, low - entryOffset, "", style=label.style_triangleup, color=bullEntryColor, textcolor=bullEntryColor, size=labelSz)
             array.push(bullEntries, lb)
             [entryFvgBox, entryFvgMid] = f_createEntryFvgVisual(latestBearFvgBar - 2, latestBearTop, latestBearBottom, bearFvgColor, fvgTransparency, showMidline, midlineColor, midlineStyleInput)
             array.push(bullEntryFvgBoxes, entryFvgBox)
@@ -316,7 +328,7 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone
         latestBullSignalDone := true
         bearEntryAlert := true
         if showEntries
-            lb = label.new(bar_index, high, "", style=label.style_triangledown, color=bearEntryColor, textcolor=bearEntryColor, size=labelSz)
+            lb = label.new(bar_index, high + entryOffset, "", style=label.style_triangledown, color=bearEntryColor, textcolor=bearEntryColor, size=labelSz)
             array.push(bearEntries, lb)
             [entryFvgBox, entryFvgMid] = f_createEntryFvgVisual(latestBullFvgBar - 2, latestBullTop, latestBullBottom, bullFvgColor, fvgTransparency, showMidline, midlineColor, midlineStyleInput)
             array.push(bearEntryFvgBoxes, entryFvgBox)
