@@ -144,19 +144,20 @@ rawHtfEma = f_getConverted(emaTf, emaSource, emaLength, "EMA")
 rawHtfEmaDense = f_getConvertedDense(emaTf, emaSource, emaLength, "EMA")
 rawHtfEmaLogic = i_mtf_mode ? nz(rawHtfEma, rawHtfEmaDense) : rawHtfEma
 logicEma = rawHtfEmaLogic
-plotEma = rawHtfEmaLogic
+plotEma = i_mtf_mode ? rawHtfEmaDense : rawHtfEmaLogic
 
 rawShortEma = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA")
 rawShortEmaDense = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA")
 shortEmaLogic = i_mtf_mode ? nz(rawShortEma, rawShortEmaDense) : rawShortEma
+shortEmaPlot = i_mtf_mode ? rawShortEmaDense : shortEmaLogic
 
 longEmaColorDyn = close >= logicEma ? bullTrendColor : bearTrendColor
 shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "HTF EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
-shortPlot = plot(showEma ? shortEmaLogic : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-fillColor = shortEmaLogic >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longPlot, shortPlot, color=showEma and not na(plotEma) and not na(shortEmaLogic) ? fillColor : na, title="EMA Spread Fill")
+shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
+fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+fill(longPlot, shortPlot, color=showEma and not na(plotEma) and not na(shortEmaPlot) ? fillColor : na, title="EMA Spread Fill")
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
