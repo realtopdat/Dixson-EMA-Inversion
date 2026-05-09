@@ -22,6 +22,12 @@ showEma = input.bool(true, "Show EMA", group=GROUP_EMA, tooltip="Shows or hides 
 emaColor = input.color(color.new(color.yellow, 0), "EMA Color", group=GROUP_EMA, tooltip="Display color for the EMA line.")
 emaWidth = input.int(2, "EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Visual line width of EMA. Does not affect signal logic.")
 i_mtf_mode = input.bool(true, "MTF Smoothed Mode", group=GROUP_EMA, tooltip="If enabled, the higher-timeframe EMA only updates on new HTF bars (and on the last bar), matching your reference MA/EMA logic.")
+shortEmaTf = input.timeframe("", "Short EMA Timeframe", group=GROUP_EMA, tooltip="Timeframe for the secondary shorter-term EMA. Default blank uses current chart timeframe.")
+shortEmaLength = input.int(31, "Short EMA Length", minval=1, group=GROUP_EMA, tooltip="Length for secondary EMA used for trend filter and EMA spread fill. Default 31.")
+shortEmaWidth = input.int(1, "Short EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Line width for short EMA. Default 1.")
+longEmaWidth = input.int(1, "Long EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Line width for main (long) EMA. Default 1.")
+bullTrendColor = input.color(color.new(color.lime, 0), "Bull Trend Color", group=GROUP_EMA, tooltip="EMA color when price is above that EMA and fill color when short EMA is above long EMA.")
+bearTrendColor = input.color(color.new(color.red, 0), "Bear Trend Color", group=GROUP_EMA, tooltip="EMA color when price is below that EMA and fill color when short EMA is below long EMA.")
 
 //━━━━━━━━━━━━━━━━━━━━
 // EMA Smoothing
@@ -156,7 +162,17 @@ smoothedEma = enableEmaSmoothing ? f_smooth(rawHtfEmaLogic, emaSmoothType, emaSm
 logicEma = useSmoothedForLogic ? smoothedEma : rawHtfEmaLogic
 plotEma = enableEmaSmoothing ? smoothedEma : rawHtfEma
 
-plot(showEma ? plotEma : na, "HTF EMA", color=emaColor, linewidth=emaWidth)
+rawShortEma = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA")
+rawShortEmaDense = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA")
+shortEmaLogic = i_mtf_mode ? nz(rawShortEma, rawShortEmaDense) : rawShortEma
+
+longEmaColorDyn = close >= logicEma ? bullTrendColor : bearTrendColor
+shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
+
+longPlot = plot(showEma ? plotEma : na, "HTF EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
+shortPlot = plot(showEma ? shortEmaLogic : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
+fillColor = shortEmaLogic >= logicEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill")
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
@@ -307,7 +323,8 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone
     touchAfterOrNow = inAfterWindow and emaTouched
     emaWindowOk = touchBeforeOrAtIfvg or touchAfterOrNow
     reclaimUp = close > logicEma and close[1] <= logicEma[1]
-    if emaWindowOk and reclaimUp
+    trendBullOk = shortEmaLogic > logicEma
+    if emaWindowOk and reclaimUp and trendBullOk
         latestBearSignalDone := true
         bullEntryAlert := true
         if showEntries
@@ -326,7 +343,8 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone
     touchAfterOrNow = inAfterWindow and emaTouched
     emaWindowOk = touchBeforeOrAtIfvg or touchAfterOrNow
     reclaimDown = close < logicEma and close[1] >= logicEma[1]
-    if emaWindowOk and reclaimDown
+    trendBearOk = shortEmaLogic < logicEma
+    if emaWindowOk and reclaimDown and trendBearOk
         latestBullSignalDone := true
         bearEntryAlert := true
         if showEntries
