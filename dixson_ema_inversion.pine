@@ -21,6 +21,7 @@ emaSource = input.source(close, "EMA Source", group=GROUP_EMA, tooltip="Source s
 showEma = input.bool(true, "Show EMA", group=GROUP_EMA, tooltip="Shows or hides the HTF EMA line on chart. Keep enabled for visual confirmation of reclaim/rejection.")
 emaColor = input.color(color.new(color.yellow, 0), "EMA Color", group=GROUP_EMA, tooltip="Display color for the EMA line.")
 emaWidth = input.int(2, "EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Visual line width of EMA. Does not affect signal logic.")
+i_mtf_mode = input.bool(true, "MTF Smoothed Mode", group=GROUP_EMA, tooltip="If enabled, the higher-timeframe EMA only updates on new HTF bars (and on the last bar), matching your reference MA/EMA logic.")
 
 //━━━━━━━━━━━━━━━━━━━━
 // EMA Smoothing
@@ -74,6 +75,23 @@ enableAlerts = input.bool(true, "Enable Alert Conditions", group=GROUP_ALERTS, t
 //━━━━━━━━━━━━━━━━━━━━
 // Helpers
 //━━━━━━━━━━━━━━━━━━━━
+f_getAvg(string maType, series float src, int len) =>
+    maType == "MA" ? ta.sma(src, len) : ta.ema(src, len)
+
+f_getConverted(string tf, series float src, int len, string maType) =>
+    avg = f_getAvg(maType, src, len)
+    if i_mtf_mode
+        [m, b] = request.security(syminfo.tickerid, tf, [avg, bar_index], barmerge.gaps_off, barmerge.lookahead_off)
+        var int lastBar = na
+        lastBar := na(lastBar[1]) or b > lastBar[1] ? b : lastBar[1]
+        lastBar != lastBar[1] or barstate.islast ? m : na
+    else
+        tf == "" ? avg : request.security(syminfo.tickerid, tf, avg, barmerge.gaps_off, barmerge.lookahead_off)
+
+f_getConvertedDense(string tf, series float src, int len, string maType) =>
+    avg = f_getAvg(maType, src, len)
+    tf == "" ? avg : request.security(syminfo.tickerid, tf, avg, barmerge.gaps_off, barmerge.lookahead_on)
+
 f_smooth(series float src, string smoothType, int len) =>
     emaV = ta.ema(src, len)
     smaV = ta.sma(src, len)
@@ -128,9 +146,11 @@ f_createEntryFvgVisual(int leftBar, float top, float bottom, color fvgColor, int
 // Core Series
 //━━━━━━━━━━━━━━━━━━━━
 atrValue = ta.atr(atrLength)
-rawHtfEma = request.security(syminfo.tickerid, emaTf, ta.ema(emaSource, emaLength), barmerge.gaps_off, barmerge.lookahead_off)
-smoothedEma = enableEmaSmoothing ? f_smooth(rawHtfEma, emaSmoothType, emaSmoothLength) : rawHtfEma
-logicEma = useSmoothedForLogic ? smoothedEma : rawHtfEma
+rawHtfEma = f_getConverted(emaTf, emaSource, emaLength, "EMA")
+rawHtfEmaDense = f_getConvertedDense(emaTf, emaSource, emaLength, "EMA")
+rawHtfEmaLogic = i_mtf_mode ? nz(rawHtfEma, rawHtfEmaDense) : rawHtfEma
+smoothedEma = enableEmaSmoothing ? f_smooth(rawHtfEmaLogic, emaSmoothType, emaSmoothLength) : rawHtfEmaLogic
+logicEma = useSmoothedForLogic ? smoothedEma : rawHtfEmaLogic
 plotEma = enableEmaSmoothing ? smoothedEma : rawHtfEma
 
 plot(showEma ? plotEma : na, "HTF EMA", color=emaColor, linewidth=emaWidth)
