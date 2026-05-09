@@ -77,7 +77,9 @@ enableAlerts = input.bool(true, "Enable Alert Conditions", group=GROUP_ALERTS, t
 // Helpers
 //━━━━━━━━━━━━━━━━━━━━
 f_getAvg(string maType, series float src, int len) =>
-    maType == "MA" ? ta.sma(src, len) : ta.ema(src, len)
+    smaV = ta.sma(src, len)
+    emaV = ta.ema(src, len)
+    maType == "MA" ? smaV : emaV
 
 f_getConverted(string tf, series float src, int len, string maType) =>
     avg = f_getAvg(maType, src, len)
