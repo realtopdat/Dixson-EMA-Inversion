@@ -140,32 +140,24 @@ f_createEntryFvgVisual(int leftBar, float top, float bottom, color fvgColor, int
 // Core Series
 //━━━━━━━━━━━━━━━━━━━━
 atrValue = ta.atr(atrLength)
-chartTfSec = timeframe.in_seconds(timeframe.period)
-longTfSec = longEmaTf == "" ? chartTfSec : timeframe.in_seconds(longEmaTf)
-shortTfSec = shortEmaTf == "" ? chartTfSec : timeframe.in_seconds(shortEmaTf)
 
-longMtfActive = longMtfSmoothMode and longTfSec > chartTfSec
-shortMtfActive = shortMtfSmoothMode and shortTfSec > chartTfSec
+longPlotSeries = f_getConverted(longEmaTf, emaSource, longEmaLength, "EMA", longMtfSmoothMode)
+longLogicSeries = f_getConvertedDense(longEmaTf, emaSource, longEmaLength, "EMA", longMtfSmoothMode)
+shortPlotSeries = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfSmoothMode)
+shortLogicSeries = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfSmoothMode)
 
-rawLongEma = f_getConverted(longEmaTf, emaSource, longEmaLength, "EMA", longMtfActive)
-rawLongEmaDense = f_getConvertedDense(longEmaTf, emaSource, longEmaLength, "EMA", longMtfActive)
-logicEma = longMtfActive ? nz(rawLongEma, rawLongEmaDense) : rawLongEma
-mtfVisualLong = ta.ema(logicEma, 3)
-plotEma = longMtfActive ? mtfVisualLong : logicEma
-
-rawShortEma = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfActive)
-rawShortEmaDense = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfActive)
-shortEmaLogic = shortMtfActive ? nz(rawShortEma, rawShortEmaDense) : rawShortEma
-mtfVisualShort = ta.ema(shortEmaLogic, 3)
-shortEmaPlot = shortMtfActive ? mtfVisualShort : shortEmaLogic
+logicEma = longLogicSeries
+plotEma = longPlotSeries
+shortEmaLogic = shortLogicSeries
+shortEmaPlot = shortPlotSeries
 
 longEmaColorDyn = close >= logicEma ? bullTrendColor : bearTrendColor
 shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longPlot, shortPlot, color=showEma and not na(plotEma) and not na(shortEmaPlot) ? fillColor : na, title="EMA Spread Fill")
+fillColor = shortEmaLogic >= logicEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill")
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
