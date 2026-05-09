@@ -14,19 +14,19 @@ string GROUP_ALERTS = "Alert Settings"
 //━━━━━━━━━━━━━━━━━━━━
 // EMA Settings
 //━━━━━━━━━━━━━━━━━━━━
-emaTf = input.timeframe("10", "EMA Timeframe", group=GROUP_EMA, tooltip="Higher timeframe used to calculate EMA via request.security(). Default 10-minute for 1-minute execution context.", display=display.none)
-emaLength = input.int(9, "EMA Length", minval=1, group=GROUP_EMA, tooltip="Length of higher timeframe EMA. Shorter values react faster; default 9 for intraday reclaim/rejection flow.", display=display.none)
-emaSource = input.source(close, "EMA Source", group=GROUP_EMA, tooltip="Source series used for EMA calculation inside the selected higher timeframe.", display=display.none)
-showEma = input.bool(true, "Show EMA", group=GROUP_EMA, tooltip="Shows or hides the HTF EMA line on chart. Keep enabled for visual confirmation of reclaim/rejection.", display=display.none)
-emaColor = input.color(color.new(color.yellow, 0), "EMA Color", group=GROUP_EMA, tooltip="Display color for the EMA line.", display=display.none)
-emaWidth = input.int(2, "EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Visual line width of EMA. Does not affect signal logic.", display=display.none)
-i_mtf_mode = input.bool(true, "MTF Smoothed Mode", group=GROUP_EMA, tooltip="If enabled, the higher-timeframe EMA only updates on new HTF bars (and on the last bar), matching your reference MA/EMA logic.", display=display.none)
-shortEmaTf = input.timeframe("", "Short EMA Timeframe", group=GROUP_EMA, tooltip="Timeframe for the secondary shorter-term EMA. Default blank uses current chart timeframe.", display=display.none)
-shortEmaLength = input.int(31, "Short EMA Length", minval=1, group=GROUP_EMA, tooltip="Length for secondary EMA used for trend filter and EMA spread fill. Default 31.", display=display.none)
+shortEmaTf = input.timeframe("", "Short EMA Timeframe", group=GROUP_EMA, tooltip="Timeframe for the short EMA. Default blank uses current chart timeframe.", display=display.none)
+shortEmaLength = input.int(31, "Short EMA Length", minval=1, group=GROUP_EMA, tooltip="Length for short EMA trend filter and spread fill. Default 31.", display=display.none)
+shortMtfSmoothMode = input.bool(true, "Short EMA MTF Smoothing", group=GROUP_EMA, tooltip="Applies MTF smoothing behavior only for the short EMA when its timeframe is higher than chart timeframe.", display=display.none)
 shortEmaWidth = input.int(1, "Short EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Line width for short EMA. Default 1.", display=display.none)
-longEmaWidth = input.int(1, "Long EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Line width for main (long) EMA. Default 1.", display=display.none)
-bullTrendColor = input.color(color.new(color.lime, 0), "Bull Trend Color", group=GROUP_EMA, tooltip="EMA color when price is above that EMA and fill color when short EMA is above long EMA.", display=display.none)
-bearTrendColor = input.color(color.new(color.red, 0), "Bear Trend Color", group=GROUP_EMA, tooltip="EMA color when price is below that EMA and fill color when short EMA is below long EMA.", display=display.none)
+
+longEmaTf = input.timeframe("10", "Long EMA Timeframe", group=GROUP_EMA, tooltip="Higher timeframe used to calculate long EMA. Default 10-minute for 1-minute execution context.", display=display.none)
+longEmaLength = input.int(9, "Long EMA Length", minval=1, group=GROUP_EMA, tooltip="Length of long EMA. Default 9.", display=display.none)
+longMtfSmoothMode = input.bool(true, "Long EMA MTF Smoothing", group=GROUP_EMA, tooltip="Applies MTF smoothing behavior only for the long EMA when its timeframe is higher than chart timeframe.", display=display.none)
+emaSource = input.source(close, "EMA Source", group=GROUP_EMA, tooltip="Source series used for EMA calculations.", display=display.none)
+showEma = input.bool(true, "Show EMAs", group=GROUP_EMA, tooltip="Shows or hides the long/short EMA lines and fill.", display=display.none)
+longEmaWidth = input.int(1, "Long EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Line width for long EMA. Default 1.", display=display.none)
+bullTrendColor = input.color(color.new(color.lime, 0), "Bull Trend Color", group=GROUP_EMA, tooltip="EMA color when price is above EMA and fill color when short EMA is above long EMA.", display=display.none)
+bearTrendColor = input.color(color.new(color.red, 0), "Bear Trend Color", group=GROUP_EMA, tooltip="EMA color when price is below EMA and fill color when short EMA is below long EMA.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // FVG Settings
@@ -78,9 +78,9 @@ f_getAvg(string maType, series float src, int len) =>
     emaV = ta.ema(src, len)
     maType == "MA" ? smaV : emaV
 
-f_getConverted(string tf, series float src, int len, string maType) =>
+f_getConverted(string tf, series float src, int len, string maType, bool mtfMode) =>
     avg = f_getAvg(maType, src, len)
-    if i_mtf_mode
+    if mtfMode
         [m, b] = request.security(syminfo.tickerid, tf, [avg, bar_index], barmerge.gaps_off, barmerge.lookahead_off)
         var int lastBar = na
         lastBar := na(lastBar[1]) or b > lastBar[1] ? b : lastBar[1]
@@ -88,7 +88,7 @@ f_getConverted(string tf, series float src, int len, string maType) =>
     else
         tf == "" ? avg : request.security(syminfo.tickerid, tf, avg, barmerge.gaps_off, barmerge.lookahead_off)
 
-f_getConvertedDense(string tf, series float src, int len, string maType) =>
+f_getConvertedDense(string tf, series float src, int len, string maType, bool mtfMode) =>
     avg = f_getAvg(maType, src, len)
     tf == "" ? avg : request.security(syminfo.tickerid, tf, avg, barmerge.gaps_off, barmerge.lookahead_on)
 
@@ -140,23 +140,29 @@ f_createEntryFvgVisual(int leftBar, float top, float bottom, color fvgColor, int
 // Core Series
 //━━━━━━━━━━━━━━━━━━━━
 atrValue = ta.atr(atrLength)
-rawHtfEma = f_getConverted(emaTf, emaSource, emaLength, "EMA")
-rawHtfEmaDense = f_getConvertedDense(emaTf, emaSource, emaLength, "EMA")
-rawHtfEmaLogic = i_mtf_mode ? nz(rawHtfEma, rawHtfEmaDense) : rawHtfEma
-logicEma = rawHtfEmaLogic
-mtfVisualLong = ta.ema(rawHtfEmaLogic, 3)
-plotEma = i_mtf_mode ? mtfVisualLong : rawHtfEmaLogic
+chartTfSec = timeframe.in_seconds(timeframe.period)
+longTfSec = longEmaTf == "" ? chartTfSec : timeframe.in_seconds(longEmaTf)
+shortTfSec = shortEmaTf == "" ? chartTfSec : timeframe.in_seconds(shortEmaTf)
 
-rawShortEma = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA")
-rawShortEmaDense = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA")
-shortEmaLogic = i_mtf_mode ? nz(rawShortEma, rawShortEmaDense) : rawShortEma
+longMtfActive = longMtfSmoothMode and longTfSec > chartTfSec
+shortMtfActive = shortMtfSmoothMode and shortTfSec > chartTfSec
+
+rawLongEma = f_getConverted(longEmaTf, emaSource, longEmaLength, "EMA", longMtfActive)
+rawLongEmaDense = f_getConvertedDense(longEmaTf, emaSource, longEmaLength, "EMA", longMtfActive)
+logicEma = longMtfActive ? nz(rawLongEma, rawLongEmaDense) : rawLongEma
+mtfVisualLong = ta.ema(logicEma, 3)
+plotEma = longMtfActive ? mtfVisualLong : logicEma
+
+rawShortEma = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfActive)
+rawShortEmaDense = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfActive)
+shortEmaLogic = shortMtfActive ? nz(rawShortEma, rawShortEmaDense) : rawShortEma
 mtfVisualShort = ta.ema(shortEmaLogic, 3)
-shortEmaPlot = i_mtf_mode ? mtfVisualShort : shortEmaLogic
+shortEmaPlot = shortMtfActive ? mtfVisualShort : shortEmaLogic
 
 longEmaColorDyn = close >= logicEma ? bullTrendColor : bearTrendColor
 shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
-longPlot = plot(showEma ? plotEma : na, "HTF EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
+longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
 fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
 fill(longPlot, shortPlot, color=showEma and not na(plotEma) and not na(shortEmaPlot) ? fillColor : na, title="EMA Spread Fill")
