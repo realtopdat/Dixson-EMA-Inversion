@@ -311,7 +311,7 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone
         latestBearSignalDone := true
         bullEntryAlert := true
         if showEntries
-            lb = label.new(bar_index, low - entryOffset, "", style=label.style_triangleup, color=bullEntryColor, textcolor=bullEntryColor, size=labelSz)
+            lb = label.new(bar_index, low - entryOffset, "Long", style=label.style_label_up, color=color.new(bullFvgColor, 0), textcolor=color.white, size=labelSz)
             array.push(bullEntries, lb)
             [entryFvgBox, entryFvgMid] = f_createEntryFvgVisual(latestBearFvgBar - 2, latestBearTop, latestBearBottom, bullFvgColor, fvgTransparency, showMidline, midlineColor, midlineStyleInput)
             array.push(bullEntryFvgBoxes, entryFvgBox)
@@ -330,7 +330,7 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone
         latestBullSignalDone := true
         bearEntryAlert := true
         if showEntries
-            lb = label.new(bar_index, high + entryOffset, "", style=label.style_triangledown, color=bearEntryColor, textcolor=bearEntryColor, size=labelSz)
+            lb = label.new(bar_index, high + entryOffset, "Short", style=label.style_label_down, color=color.new(bearFvgColor, 0), textcolor=color.white, size=labelSz)
             array.push(bearEntries, lb)
             [entryFvgBox, entryFvgMid] = f_createEntryFvgVisual(latestBullFvgBar - 2, latestBullTop, latestBullBottom, bearFvgColor, fvgTransparency, showMidline, midlineColor, midlineStyleInput)
             array.push(bearEntryFvgBoxes, entryFvgBox)
