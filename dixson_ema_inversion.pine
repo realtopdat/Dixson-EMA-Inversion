@@ -1,0 +1,290 @@
+//@version=6
+indicator("Dix$on EMA Inversion", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+//━━━━━━━━━━━━━━━━━━━━
+// Input Groups
+//━━━━━━━━━━━━━━━━━━━━
+string GROUP_EMA = "EMA Settings"
+string GROUP_EMA_SMOOTH = "EMA Smoothing"
+string GROUP_FVG = "FVG Settings"
+string GROUP_IFVG = "IFVG Settings"
+string GROUP_ENTRY = "Entry Settings"
+string GROUP_DISPLAY = "Display Settings"
+string GROUP_ALERTS = "Alert Settings"
+
+//━━━━━━━━━━━━━━━━━━━━
+// EMA Settings
+//━━━━━━━━━━━━━━━━━━━━
+emaTf = input.timeframe("10", "EMA Timeframe", group=GROUP_EMA, tooltip="Higher timeframe used to calculate EMA via request.security(). Default 10-minute for 1-minute execution context.")
+emaLength = input.int(9, "EMA Length", minval=1, group=GROUP_EMA, tooltip="Length of higher timeframe EMA. Shorter values react faster; default 9 for intraday reclaim/rejection flow.")
+emaSource = input.source(close, "EMA Source", group=GROUP_EMA, tooltip="Source series used for EMA calculation inside the selected higher timeframe.")
+showEma = input.bool(true, "Show EMA", group=GROUP_EMA, tooltip="Shows or hides the HTF EMA line on chart. Keep enabled for visual confirmation of reclaim/rejection.")
+emaColor = input.color(color.new(color.yellow, 0), "EMA Color", group=GROUP_EMA, tooltip="Display color for the EMA line.")
+emaWidth = input.int(2, "EMA Width", minval=1, maxval=5, group=GROUP_EMA, tooltip="Visual line width of EMA. Does not affect signal logic.")
+
+//━━━━━━━━━━━━━━━━━━━━
+// EMA Smoothing
+//━━━━━━━━━━━━━━━━━━━━
+enableEmaSmoothing = input.bool(true, "Enable EMA Smoothing", group=GROUP_EMA_SMOOTH, tooltip="Applies optional LTF smoothing to the HTF EMA for less stair-step appearance. Recommended ON for cleaner visuals.")
+emaSmoothLength = input.int(3, "EMA Smoothing Length", minval=1, group=GROUP_EMA_SMOOTH, tooltip="Length for smoothing filter. Small values (2-5) preserve responsiveness while reducing stair-steps.")
+emaSmoothType = input.string("EMA", "EMA Smoothing Type", options=["EMA", "SMA", "RMA", "WMA"], group=GROUP_EMA_SMOOTH, tooltip="Smoothing algorithm for visual EMA refinement.")
+useSmoothedForLogic = input.bool(false, "Use Smoothed EMA For Logic", group=GROUP_EMA_SMOOTH, tooltip="If OFF (recommended), logic uses raw non-repainting HTF EMA. If ON, entries/conditions use smoothed line values.")
+
+//━━━━━━━━━━━━━━━━━━━━
+// FVG Settings
+//━━━━━━━━━━━━━━━━━━━━
+showBullFvg = input.bool(true, "Show Bullish FVGs", group=GROUP_FVG, tooltip="Displays bullish FVG zones (potential bearish IFVG source) as boxes.")
+showBearFvg = input.bool(true, "Show Bearish FVGs", group=GROUP_FVG, tooltip="Displays bearish FVG zones (potential bullish IFVG source) as boxes.")
+bullFvgColor = input.color(color.new(color.lime, 0), "Bullish FVG Color", group=GROUP_FVG, tooltip="Base color for bullish FVG boxes.")
+bearFvgColor = input.color(color.new(color.red, 0), "Bearish FVG Color", group=GROUP_FVG, tooltip="Base color for bearish FVG boxes.")
+fvgTransparency = input.int(85, "FVG Transparency", minval=0, maxval=100, group=GROUP_FVG, tooltip="Opacity of FVG boxes. Higher values are more transparent.")
+extendFvgRight = input.bool(true, "Extend FVGs Right", group=GROUP_FVG, tooltip="Extends FVG zones into future bars for ongoing reference.")
+showMidline = input.bool(true, "Show Midline", group=GROUP_FVG, tooltip="Draws midpoint line inside each FVG box.")
+midlineStyleInput = input.string("Dotted", "Midline Style", options=["Solid", "Dashed", "Dotted"], group=GROUP_FVG, tooltip="Line style for FVG midpoint.")
+midlineColor = input.color(color.new(color.gray, 0), "Midline Color", group=GROUP_FVG, tooltip="Color used for FVG midpoint line.")
+fvgDisplayCap = input.int(2, "FVG Display Cap", minval=0, group=GROUP_DISPLAY, tooltip="Max number of bullish and bearish FVGs displayed per side. 0 = unlimited. Default 2 for clarity.")
+
+fvgSizeFilterEnabled = input.bool(false, "FVG Size Filter Enabled", group=GROUP_FVG, tooltip="When enabled, only FVGs meeting minimum size threshold are eligible for logic/visual creation.")
+fvgSizeMode = input.string("Points/Dollars", "FVG Size Mode", options=["Points/Dollars", "Ticks", "Percent", "ATR Multiple"], group=GROUP_FVG, tooltip="Measurement mode for minimum FVG size filter.")
+minFvgSize = input.float(0.0, "Minimum FVG Size", minval=0.0, step=0.01, group=GROUP_FVG, tooltip="Minimum FVG size threshold in selected mode. Set 0 to effectively disable strict filtering.")
+atrLength = input.int(14, "ATR Length", minval=1, group=GROUP_FVG, tooltip="ATR length used only when FVG Size Mode = ATR Multiple.")
+
+//━━━━━━━━━━━━━━━━━━━━
+// IFVG Settings
+//━━━━━━━━━━━━━━━━━━━━
+ifvgConfirmBarLimit = input.int(0, "IFVG Confirmation Bar Limit", minval=0, group=GROUP_IFVG, tooltip="Maximum bars allowed between FVG creation and inversion confirmation. 0 = no limit.")
+
+//━━━━━━━━━━━━━━━━━━━━
+// Entry Settings
+//━━━━━━━━━━━━━━━━━━━━
+emaTouchType = input.string("Either", "EMA Touch Type", options=["Wick Touch", "Body Touch", "Either"], group=GROUP_ENTRY, tooltip="Defines what counts as EMA interaction: wick cross, body intersection, or either.")
+emaTouchBarsBefore = input.int(3, "EMA Touch Bars Before IFVG", minval=0, group=GROUP_ENTRY, tooltip="How many bars BEFORE IFVG confirmation are allowed to contain EMA touch for entry qualification.")
+emaTouchBarsAfter = input.int(3, "EMA Touch Bars After IFVG", minval=0, group=GROUP_ENTRY, tooltip="How many bars AFTER IFVG confirmation are allowed for EMA touch/reclaim completion.")
+showEntries = input.bool(true, "Show Entries", group=GROUP_ENTRY, tooltip="Show bullish/bearish entry markers on chart.")
+bullEntryColor = input.color(color.new(color.aqua, 0), "Bullish Entry Color", group=GROUP_ENTRY, tooltip="Color of bullish entry marker.")
+bearEntryColor = input.color(color.new(color.orange, 0), "Bearish Entry Color", group=GROUP_ENTRY, tooltip="Color of bearish entry marker.")
+entryLabelSizeInput = input.string("Normal", "Entry Label Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=GROUP_ENTRY, tooltip="Visual size of entry triangles.")
+entryDisplayCap = input.int(10, "Entry Display Cap", minval=0, group=GROUP_DISPLAY, tooltip="Maximum number of bullish and bearish entry markers retained per side. 0 = unlimited.")
+
+//━━━━━━━━━━━━━━━━━━━━
+// Alert Settings
+//━━━━━━━━━━━━━━━━━━━━
+enableAlerts = input.bool(true, "Enable Alert Conditions", group=GROUP_ALERTS, tooltip="Master visibility/organization toggle for alertcondition usage in alert dialog. Does not affect plotted logic.")
+
+//━━━━━━━━━━━━━━━━━━━━
+// Helpers
+//━━━━━━━━━━━━━━━━━━━━
+f_smooth(series float src, string smoothType, int len) =>
+    smoothType == "EMA" ? ta.ema(src, len) :
+     smoothType == "SMA" ? ta.sma(src, len) :
+     smoothType == "RMA" ? ta.rma(src, len) : ta.wma(src, len)
+
+f_midlineStyle(string style) =>
+    style == "Solid" ? line.style_solid : style == "Dashed" ? line.style_dashed : line.style_dotted
+
+f_touchEma(float emaValue, string touchType) =>
+    wickTouch = high >= emaValue and low <= emaValue
+    bodyHigh = math.max(open, close)
+    bodyLow = math.min(open, close)
+    bodyTouch = bodyHigh >= emaValue and bodyLow <= emaValue
+    touchType == "Wick Touch" ? wickTouch : touchType == "Body Touch" ? bodyTouch : (wickTouch or bodyTouch)
+
+f_sizeValue(float top, float bottom, string mode, float atrV) =>
+    absSize = math.abs(top - bottom)
+    mode == "Points/Dollars" ? absSize :
+     mode == "Ticks" ? absSize / syminfo.mintick :
+     mode == "Percent" ? (absSize / close) * 100.0 : atrV == 0.0 ? 0.0 : absSize / atrV
+
+f_labelSize(string s) =>
+    s == "Tiny" ? size.tiny : s == "Small" ? size.small : s == "Large" ? size.large : s == "Huge" ? size.huge : size.normal
+
+f_cleanupVisuals(array<box> boxesArr, array<line> linesArr, int cap) =>
+    if cap > 0
+        while array.size(boxesArr) > cap
+            b = array.shift(boxesArr)
+            box.delete(b)
+        while array.size(linesArr) > cap
+            l = array.shift(linesArr)
+            line.delete(l)
+
+f_cleanupLabels(array<label> labelsArr, int cap) =>
+    if cap > 0
+        while array.size(labelsArr) > cap
+            lb = array.shift(labelsArr)
+            label.delete(lb)
+
+//━━━━━━━━━━━━━━━━━━━━
+// Core Series
+//━━━━━━━━━━━━━━━━━━━━
+atrValue = ta.atr(atrLength)
+rawHtfEma = request.security(syminfo.tickerid, emaTf, ta.ema(emaSource, emaLength), barmerge.gaps_off, barmerge.lookahead_off)
+smoothedEma = enableEmaSmoothing ? f_smooth(rawHtfEma, emaSmoothType, emaSmoothLength) : rawHtfEma
+logicEma = useSmoothedForLogic ? smoothedEma : rawHtfEma
+plotEma = enableEmaSmoothing ? smoothedEma : rawHtfEma
+
+plot(showEma ? plotEma : na, "HTF EMA", color=emaColor, linewidth=emaWidth)
+
+//━━━━━━━━━━━━━━━━━━━━
+// State Storage
+//━━━━━━━━━━━━━━━━━━━━
+var array<box> bullBoxes = array.new<box>()
+var array<line> bullMidlines = array.new<line>()
+var array<box> bearBoxes = array.new<box>()
+var array<line> bearMidlines = array.new<line>()
+var array<label> bullEntries = array.new<label>()
+var array<label> bearEntries = array.new<label>()
+
+var int latestBullFvgBar = na
+var float latestBullTop = na
+var float latestBullBottom = na
+var bool latestBullActive = false
+var bool latestBullIfvgConfirmed = false
+var int latestBullIfvgBar = na
+var bool latestBullSignalDone = false
+
+var int latestBearFvgBar = na
+var float latestBearTop = na
+var float latestBearBottom = na
+var bool latestBearActive = false
+var bool latestBearIfvgConfirmed = false
+var int latestBearIfvgBar = na
+var bool latestBearSignalDone = false
+
+var bool bullIfvgConfirmedAlert = false
+var bool bearIfvgConfirmedAlert = false
+var bool bullEntryAlert = false
+var bool bearEntryAlert = false
+
+bullIfvgConfirmedAlert := false
+bearIfvgConfirmedAlert := false
+bullEntryAlert := false
+bearEntryAlert := false
+
+//━━━━━━━━━━━━━━━━━━━━
+// FVG Detection
+//━━━━━━━━━━━━━━━━━━━━
+bullFvgFound = bar_index >= 2 and high[2] < low
+bearFvgFound = bar_index >= 2 and low[2] > high
+
+if bullFvgFound
+    fvgTop = low
+    fvgBottom = high[2]
+    sizeOk = not fvgSizeFilterEnabled or f_sizeValue(fvgTop, fvgBottom, fvgSizeMode, atrValue) >= minFvgSize
+    if sizeOk
+        if latestBullActive
+            latestBullActive := false
+        latestBullFvgBar := bar_index
+        latestBullTop := fvgTop
+        latestBullBottom := fvgBottom
+        latestBullActive := true
+        latestBullIfvgConfirmed := false
+        latestBullIfvgBar := na
+        latestBullSignalDone := false
+
+        if showBullFvg
+            rightEdge = extendFvgRight ? bar_index + 1 : bar_index
+            newBox = box.new(bar_index - 2, fvgTop, rightEdge, fvgBottom, border_color=color.new(bullFvgColor, 0), bgcolor=color.new(bullFvgColor, fvgTransparency), extend=extendFvgRight ? extend.right : extend.none)
+            array.push(bullBoxes, newBox)
+            if showMidline
+                mid = (fvgTop + fvgBottom) * 0.5
+                newLine = line.new(bar_index - 2, mid, rightEdge, mid, color=midlineColor, style=f_midlineStyle(midlineStyleInput), extend=extendFvgRight ? extend.right : extend.none)
+                array.push(bullMidlines, newLine)
+
+if bearFvgFound
+    fvgTop = low[2]
+    fvgBottom = high
+    sizeOk = not fvgSizeFilterEnabled or f_sizeValue(fvgTop, fvgBottom, fvgSizeMode, atrValue) >= minFvgSize
+    if sizeOk
+        if latestBearActive
+            latestBearActive := false
+        latestBearFvgBar := bar_index
+        latestBearTop := fvgTop
+        latestBearBottom := fvgBottom
+        latestBearActive := true
+        latestBearIfvgConfirmed := false
+        latestBearIfvgBar := na
+        latestBearSignalDone := false
+
+        if showBearFvg
+            rightEdge = extendFvgRight ? bar_index + 1 : bar_index
+            newBox = box.new(bar_index - 2, fvgTop, rightEdge, fvgBottom, border_color=color.new(bearFvgColor, 0), bgcolor=color.new(bearFvgColor, fvgTransparency), extend=extendFvgRight ? extend.right : extend.none)
+            array.push(bearBoxes, newBox)
+            if showMidline
+                mid = (fvgTop + fvgBottom) * 0.5
+                newLine = line.new(bar_index - 2, mid, rightEdge, mid, color=midlineColor, style=f_midlineStyle(midlineStyleInput), extend=extendFvgRight ? extend.right : extend.none)
+                array.push(bearMidlines, newLine)
+
+f_cleanupVisuals(bullBoxes, bullMidlines, fvgDisplayCap)
+f_cleanupVisuals(bearBoxes, bearMidlines, fvgDisplayCap)
+
+//━━━━━━━━━━━━━━━━━━━━
+// IFVG Confirmation
+//━━━━━━━━━━━━━━━━━━━━
+if latestBullActive and not latestBullIfvgConfirmed
+    barsFromCreate = bar_index - latestBullFvgBar
+    withinLimit = ifvgConfirmBarLimit == 0 or barsFromCreate <= ifvgConfirmBarLimit
+    if withinLimit
+        if close < latestBullBottom
+            latestBullIfvgConfirmed := true
+            latestBullIfvgBar := bar_index
+            bearIfvgConfirmedAlert := true
+    else
+        latestBullActive := false
+
+if latestBearActive and not latestBearIfvgConfirmed
+    barsFromCreate = bar_index - latestBearFvgBar
+    withinLimit = ifvgConfirmBarLimit == 0 or barsFromCreate <= ifvgConfirmBarLimit
+    if withinLimit
+        if close > latestBearTop
+            latestBearIfvgConfirmed := true
+            latestBearIfvgBar := bar_index
+            bullIfvgConfirmedAlert := true
+    else
+        latestBearActive := false
+
+//━━━━━━━━━━━━━━━━━━━━
+// Entry Logic
+//━━━━━━━━━━━━━━━━━━━━
+emaTouched = f_touchEma(logicEma, emaTouchType)
+labelSz = f_labelSize(entryLabelSizeInput)
+
+if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone
+    barsSinceIfvg = bar_index - latestBearIfvgBar
+    inAfterWindow = barsSinceIfvg >= 0 and barsSinceIfvg <= emaTouchBarsAfter
+    validBeforeStart = math.max(latestBearFvgBar, latestBearIfvgBar - emaTouchBarsBefore)
+    touchBeforeOrAtIfvg = ta.barssince(emaTouched) >= 0 and (bar_index - ta.barssince(emaTouched)) >= validBeforeStart and (bar_index - ta.barssince(emaTouched)) <= latestBearIfvgBar
+    touchAfterOrNow = inAfterWindow and emaTouched
+    emaWindowOk = touchBeforeOrAtIfvg or touchAfterOrNow
+    reclaimUp = close > logicEma and close[1] <= logicEma[1]
+    if emaWindowOk and reclaimUp
+        latestBearSignalDone := true
+        bullEntryAlert := true
+        if showEntries
+            lb = label.new(bar_index, low, "", style=label.style_triangleup, color=bullEntryColor, textcolor=bullEntryColor, size=labelSz)
+            array.push(bullEntries, lb)
+
+if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone
+    barsSinceIfvg = bar_index - latestBullIfvgBar
+    inAfterWindow = barsSinceIfvg >= 0 and barsSinceIfvg <= emaTouchBarsAfter
+    validBeforeStart = math.max(latestBullFvgBar, latestBullIfvgBar - emaTouchBarsBefore)
+    touchBeforeOrAtIfvg = ta.barssince(emaTouched) >= 0 and (bar_index - ta.barssince(emaTouched)) >= validBeforeStart and (bar_index - ta.barssince(emaTouched)) <= latestBullIfvgBar
+    touchAfterOrNow = inAfterWindow and emaTouched
+    emaWindowOk = touchBeforeOrAtIfvg or touchAfterOrNow
+    reclaimDown = close < logicEma and close[1] >= logicEma[1]
+    if emaWindowOk and reclaimDown
+        latestBullSignalDone := true
+        bearEntryAlert := true
+        if showEntries
+            lb = label.new(bar_index, high, "", style=label.style_triangledown, color=bearEntryColor, textcolor=bearEntryColor, size=labelSz)
+            array.push(bearEntries, lb)
+
+f_cleanupLabels(bullEntries, entryDisplayCap)
+f_cleanupLabels(bearEntries, entryDisplayCap)
+
+//━━━━━━━━━━━━━━━━━━━━
+// Alerts
+//━━━━━━━━━━━━━━━━━━━━
+alertcondition(enableAlerts and bullIfvgConfirmedAlert, "Bullish IFVG Confirmed", "Bearish FVG inverted to bullish IFVG.")
+alertcondition(enableAlerts and bearIfvgConfirmedAlert, "Bearish IFVG Confirmed", "Bullish FVG inverted to bearish IFVG.")
+alertcondition(enableAlerts and bullEntryAlert, "Bullish EMA Inversion Entry", "Bullish IFVG + EMA reclaim entry confirmed.")
+alertcondition(enableAlerts and bearEntryAlert, "Bearish EMA Inversion Entry", "Bearish IFVG + EMA rejection entry confirmed.")
