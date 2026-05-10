@@ -146,16 +146,16 @@ shortPlotSeries = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA", s
 shortLogicSeries = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfSmoothMode)
 
 logicEma = longLogicSeries
-plotEma = longPlotSeries
+plotEma = longLogicSeries
 shortEmaLogic = shortLogicSeries
-shortEmaPlot = shortPlotSeries
+shortEmaPlot = shortLogicSeries
 
 longEmaColorDyn = close >= logicEma ? bullTrendColor : bearTrendColor
 shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-fillColor = shortEmaLogic >= logicEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
 fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill")
 
 //━━━━━━━━━━━━━━━━━━━━
@@ -303,7 +303,7 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
     touchWindowStart = latestBearFvgBar - emaTouchBarsBefore
     touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBearIfvgBar
     confirmBullClose = close > logicEma
-    trendBullOk = shortEmaLogic > logicEma
+    trendBullOk = shortEmaPlot > plotEma
     if touchWindowOk and confirmBullClose and trendBullOk
         latestBearSignalDone := true
         bullEntryAlert := true
@@ -319,7 +319,7 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
     touchWindowStart = latestBullFvgBar - emaTouchBarsBefore
     touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBullIfvgBar
     confirmBearClose = close < logicEma
-    trendBearOk = shortEmaLogic < logicEma
+    trendBearOk = shortEmaPlot < plotEma
     if touchWindowOk and confirmBearClose and trendBearOk
         latestBullSignalDone := true
         bearEntryAlert := true
