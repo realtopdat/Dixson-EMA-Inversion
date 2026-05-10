@@ -158,8 +158,16 @@ shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
+var float longFillBase = na
+var float shortFillBase = na
+longFillBase := na(plotEma) ? nz(longFillBase[1], logicEma) : plotEma
+shortFillBase := na(shortEmaPlot) ? nz(shortFillBase[1], shortEmaLogic) : shortEmaPlot
+longFillSeries = longMtfSmoothMode ? ta.linreg(longFillBase, 2, 0) : longFillBase
+shortFillSeries = shortMtfSmoothMode ? ta.linreg(shortFillBase, 2, 0) : shortFillBase
+longFillPlot = plot(showEma ? longFillSeries : na, "Long EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
+shortFillPlot = plot(showEma ? shortFillSeries : na, "Short EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
+fillColor = shortFillSeries >= longFillSeries ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+fill(longFillPlot, shortFillPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
