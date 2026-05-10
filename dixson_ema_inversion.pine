@@ -299,16 +299,11 @@ lastEmaTouchBar = barsSinceEmaTouch >= 0 ? bar_index - barsSinceEmaTouch : na
 labelSz = f_labelSize(entryLabelSizeInput)
 entryOffset = math.max(syminfo.mintick * 10.0, atrValue * entryMarkerOffsetAtrMult)
 
-if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone
-    barsSinceIfvg = bar_index - latestBearIfvgBar
-    inAfterWindow = barsSinceIfvg >= 0 and barsSinceIfvg <= emaTouchBarsAfter
-    validBeforeStart = math.max(latestBearFvgBar, latestBearIfvgBar - emaTouchBarsBefore)
-    touchBeforeOrAtIfvg = not na(lastEmaTouchBar) and lastEmaTouchBar >= validBeforeStart and lastEmaTouchBar <= latestBearIfvgBar
-    touchAfterOrNow = inAfterWindow and emaTouched
-    emaWindowOk = touchBeforeOrAtIfvg or touchAfterOrNow
-    reclaimUp = close > logicEma and close[1] <= logicEma[1]
+if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and bar_index == latestBearIfvgBar
+    confirmTouchOk = emaTouched
+    confirmBullClose = close > logicEma
     trendBullOk = shortEmaLogic > logicEma
-    if emaWindowOk and reclaimUp and trendBullOk
+    if confirmTouchOk and confirmBullClose and trendBullOk
         latestBearSignalDone := true
         bullEntryAlert := true
         if showEntries
@@ -319,16 +314,11 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone
             if not na(entryFvgMid)
                 array.push(bullEntryFvgMidlines, entryFvgMid)
 
-if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone
-    barsSinceIfvg = bar_index - latestBullIfvgBar
-    inAfterWindow = barsSinceIfvg >= 0 and barsSinceIfvg <= emaTouchBarsAfter
-    validBeforeStart = math.max(latestBullFvgBar, latestBullIfvgBar - emaTouchBarsBefore)
-    touchBeforeOrAtIfvg = not na(lastEmaTouchBar) and lastEmaTouchBar >= validBeforeStart and lastEmaTouchBar <= latestBullIfvgBar
-    touchAfterOrNow = inAfterWindow and emaTouched
-    emaWindowOk = touchBeforeOrAtIfvg or touchAfterOrNow
-    reclaimDown = close < logicEma and close[1] >= logicEma[1]
+if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and bar_index == latestBullIfvgBar
+    confirmTouchOk = emaTouched
+    confirmBearClose = close < logicEma
     trendBearOk = shortEmaLogic < logicEma
-    if emaWindowOk and reclaimDown and trendBearOk
+    if confirmTouchOk and confirmBearClose and trendBearOk
         latestBullSignalDone := true
         bearEntryAlert := true
         if showEntries
