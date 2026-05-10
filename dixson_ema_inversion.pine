@@ -81,11 +81,12 @@ f_getAvg(string maType, series float src, int len) =>
 f_getConverted(string tf, series float src, int len, string maType, bool mtfMode) =>
     avg = f_getAvg(maType, src, len)
     if mtfMode
-        m = request.security(syminfo.tickerid, tf, avg, barmerge.gaps_off, barmerge.lookahead_off)
-        isNewHtfBar = request.security(syminfo.tickerid, tf, bar_index != bar_index[1], barmerge.gaps_off, barmerge.lookahead_off)
-        isNewHtfBar or barstate.islast ? m : na
+        [m, b] = request.security(syminfo.tickerid, tf, [avg, bar_index])
+        var int lastBar = na
+        lastBar := na(lastBar[1]) or b > lastBar[1] ? b : lastBar[1]
+        lastBar != lastBar[1] or barstate.islast ? m : na
     else
-        tf == "" ? avg : request.security(syminfo.tickerid, tf, avg, barmerge.gaps_off, barmerge.lookahead_off)
+        tf == "" ? avg : request.security(syminfo.tickerid, tf, avg)
 
 f_getConvertedDense(string tf, series float src, int len, string maType, bool mtfMode) =>
     avg = f_getAvg(maType, src, len)
@@ -146,8 +147,8 @@ shortPlotSeries = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA", s
 shortLogicSeries = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfSmoothMode)
 
 logicEma = longLogicSeries
-longVisualSmooth = longLogicSeries
-shortVisualSmooth = shortLogicSeries
+longVisualSmooth = longPlotSeries
+shortVisualSmooth = shortPlotSeries
 plotEma = longMtfSmoothMode ? longVisualSmooth : longLogicSeries
 shortEmaLogic = shortLogicSeries
 shortEmaPlot = shortMtfSmoothMode ? shortVisualSmooth : shortLogicSeries
