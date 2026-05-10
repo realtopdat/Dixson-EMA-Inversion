@@ -16,6 +16,7 @@ string GROUP_ALERTS = "• Alerts ━━━━━━━━━━━━━━━�
 // Master
 //━━━━━━━━━━━━━━━━━━━━
 showEma = input.bool(true, "Show EMAs", inline="MASTER_1", group=GROUP_MASTER, tooltip="Master display toggle for EMA lines and EMA spread fill. Disable to hide EMA visuals only.", display=display.none)
+showEmaFill = input.bool(true, "Show EMA Fill", inline="MASTER_1", group=GROUP_MASTER, display=display.none)
 showEntries = input.bool(true, "Show Entries", inline="MASTER_1", group=GROUP_MASTER, display=display.none)
 showEmaCrossLabels = input.bool(true, "Show EMA Cross Labels", inline="MASTER_1", group=GROUP_MASTER, display=display.none)
 enableAlerts = input.bool(true, "Enable Alerts", inline="MASTER_1", group=GROUP_MASTER, display=display.none)
@@ -215,7 +216,7 @@ else if shortFillState < longFillState
     fillBullState := false
 
 fillColor = fillBullState ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longFillRefPlot, shortFillRefPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
+fill(longFillRefPlot, shortFillRefPlot, color=(showEma and showEmaFill) ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 // EMA crossover labels (Golden/Death) using displayed EMA states so HTF+MTF smoothing
 // only fires when the smoothed EMA lines themselves actually cross.
