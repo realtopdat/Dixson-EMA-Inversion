@@ -147,8 +147,8 @@ shortPlotSeries = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA", s
 shortLogicSeries = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfSmoothMode)
 
 logicEma = longLogicSeries
-longVisualSmooth = longPlotSeries
-shortVisualSmooth = shortPlotSeries
+longVisualSmooth = longLogicSeries
+shortVisualSmooth = shortLogicSeries
 plotEma = longMtfSmoothMode ? longVisualSmooth : longLogicSeries
 shortEmaLogic = shortLogicSeries
 shortEmaPlot = shortMtfSmoothMode ? shortVisualSmooth : shortLogicSeries
@@ -158,16 +158,8 @@ shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-var float longFillBase = na
-var float shortFillBase = na
-longFillBase := na(plotEma) ? nz(longFillBase[1], logicEma) : plotEma
-shortFillBase := na(shortEmaPlot) ? nz(shortFillBase[1], shortEmaLogic) : shortEmaPlot
-longFillSeries = longMtfSmoothMode ? ta.linreg(longFillBase, 2, 0) : longFillBase
-shortFillSeries = shortMtfSmoothMode ? ta.linreg(shortFillBase, 2, 0) : shortFillBase
-longFillPlot = plot(showEma ? longFillSeries : na, "Long EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
-shortFillPlot = plot(showEma ? shortFillSeries : na, "Short EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
-fillColor = shortFillSeries >= longFillSeries ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longFillPlot, shortFillPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
+fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
