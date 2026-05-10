@@ -11,8 +11,6 @@ string GROUP_IFVG = "• IFVG & Entry Logic ━━━━━━━━━━━━
 string GROUP_ENTRY = "• Entry Visuals ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_DISPLAY = "• Display Caps & Visibility ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_ALERTS = "• Alerts ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-string GROUP_TRADE = "• Trade Level Visuals ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-string GROUP_CANDLE = "• IFVG Entry Signals, Labels & Candle Colors ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 //━━━━━━━━━━━━━━━━━━━━
 // Master
@@ -87,27 +85,6 @@ entryDisplayCap = input.int(10, "Entry Cap", minval=0, inline="DISP_1", group=GR
 // Alerts
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts are gated by the Master > Enable Alerts toggle.
-
-//━━━━━━━━━━━━━━━━━━━━
-// Trade Level Visuals (non-liquidity)
-//━━━━━━━━━━━━━━━━━━━━
-showTradeLevels = input.bool(true, "Show Trade Levels", inline="TRADE_1", group=GROUP_TRADE, tooltip="Plots active trade levels from IFVG entries: Entry, Stop, TP1, and TP2. Liquidity trade levels are intentionally excluded.", display=display.none)
-tradeStopMode = input.string("IFVG Boundary", "Stop Mode", options=["IFVG Boundary", "ATR"], inline="TRADE_1", group=GROUP_TRADE, display=display.none)
-tradeAtrMult = input.float(1.0, "ATR Mult", minval=0.1, step=0.1, inline="TRADE_1", group=GROUP_TRADE, display=display.none)
-tp1Enabled = input.bool(true, "TP1", inline="TRADE_2", group=GROUP_TRADE, tooltip="Take-profit settings in R (risk units). TP levels and line colors are used for active long/short trades.", display=display.none)
-tp1RR = input.float(1.0, "TP1 R", minval=0.1, step=0.1, inline="TRADE_2", group=GROUP_TRADE, display=display.none)
-tp2Enabled = input.bool(true, "TP2", inline="TRADE_2", group=GROUP_TRADE, display=display.none)
-tp2RR = input.float(2.0, "TP2 R", minval=0.1, step=0.1, inline="TRADE_3", group=GROUP_TRADE, tooltip="Visual colors for active trade level lines.", display=display.none)
-tradeLongColor = input.color(color.new(color.lime, 0), "Long Line", inline="TRADE_3", group=GROUP_TRADE, display=display.none)
-tradeShortColor = input.color(color.new(color.red, 0), "Short Line", inline="TRADE_3", group=GROUP_TRADE, display=display.none)
-
-//━━━━━━━━━━━━━━━━━━━━
-// Candle Colors
-//━━━━━━━━━━━━━━━━━━━━
-enableCandleColors = input.bool(true, "Color Candles", inline="CANDLE_1", group=GROUP_CANDLE, tooltip="Colors candles by active trade state: long active, short active, or no active trade.", display=display.none)
-activeLongCandleColor = input.color(color.new(color.lime, 65), "Long Active", inline="CANDLE_1", group=GROUP_CANDLE, display=display.none)
-activeShortCandleColor = input.color(color.new(color.red, 65), "Short Active", inline="CANDLE_1", group=GROUP_CANDLE, display=display.none)
-neutralCandleColor = input.color(color.new(color.gray, 75), "No Active", inline="CANDLE_2", group=GROUP_CANDLE, tooltip="Neutral candle color used when no trade is currently active.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Helpers
@@ -262,16 +239,6 @@ var bool bearIfvgConfirmedAlert = false
 var bool bullEntryAlert = false
 var bool bearEntryAlert = false
 
-var int activeTradeDir = 0
-var float activeTradeEntry = na
-var float activeTradeStop = na
-var float activeTradeTp1 = na
-var float activeTradeTp2 = na
-var line activeEntryLine = na
-var line activeStopLine = na
-var line activeTp1Line = na
-var line activeTp2Line = na
-
 bullIfvgConfirmedAlert := false
 bearIfvgConfirmedAlert := false
 bullEntryAlert := false
@@ -390,12 +357,6 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
     if touchWindowOk and confirmBullClose and trendBullOk
         latestBearSignalDone := true
         bullEntryAlert := true
-        activeTradeDir := 1
-        activeTradeEntry := close
-        activeTradeStop := tradeStopMode == "ATR" ? close - (atrValue * tradeAtrMult) : latestBearBottom
-        longRisk = math.max(syminfo.mintick, activeTradeEntry - activeTradeStop)
-        activeTradeTp1 := tp1Enabled ? activeTradeEntry + (longRisk * tp1RR) : na
-        activeTradeTp2 := tp2Enabled ? activeTradeEntry + (longRisk * tp2RR) : na
         if showEntries
             lb = label.new(bar_index, low - entryOffset, "Long", style=label.style_label_up, color=color.new(bullFvgColor, 0), textcolor=color.white, size=labelSz)
             array.push(bullEntries, lb)
@@ -412,12 +373,6 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
     if touchWindowOk and confirmBearClose and trendBearOk
         latestBullSignalDone := true
         bearEntryAlert := true
-        activeTradeDir := -1
-        activeTradeEntry := close
-        activeTradeStop := tradeStopMode == "ATR" ? close + (atrValue * tradeAtrMult) : latestBullTop
-        shortRisk = math.max(syminfo.mintick, activeTradeStop - activeTradeEntry)
-        activeTradeTp1 := tp1Enabled ? activeTradeEntry - (shortRisk * tp1RR) : na
-        activeTradeTp2 := tp2Enabled ? activeTradeEntry - (shortRisk * tp2RR) : na
         if showEntries
             lb = label.new(bar_index, high + entryOffset, "Short", style=label.style_label_down, color=color.new(bearFvgColor, 0), textcolor=color.white, size=labelSz)
             array.push(bearEntries, lb)
@@ -430,42 +385,6 @@ f_cleanupLabels(bullEntries, entryDisplayCap)
 f_cleanupLabels(bearEntries, entryDisplayCap)
 f_cleanupVisuals(bullEntryFvgBoxes, bullEntryFvgMidlines, entryDisplayCap)
 f_cleanupVisuals(bearEntryFvgBoxes, bearEntryFvgMidlines, entryDisplayCap)
-
-//━━━━━━━━━━━━━━━━━━━━
-// Trade Levels + Candle Colors
-//━━━━━━━━━━━━━━━━━━━━
-if showTradeLevels and activeTradeDir != 0 and not na(activeTradeEntry)
-    tradeColor = activeTradeDir == 1 ? tradeLongColor : tradeShortColor
-    if na(activeEntryLine)
-        activeEntryLine := line.new(bar_index, activeTradeEntry, bar_index, activeTradeEntry, extend=extend.right, color=tradeColor, style=line.style_solid)
-        activeStopLine := line.new(bar_index, activeTradeStop, bar_index, activeTradeStop, extend=extend.right, color=color.new(color.red, 0), style=line.style_dashed)
-        if tp1Enabled and not na(activeTradeTp1)
-            activeTp1Line := line.new(bar_index, activeTradeTp1, bar_index, activeTradeTp1, extend=extend.right, color=color.new(color.green, 0), style=line.style_dotted)
-        if tp2Enabled and not na(activeTradeTp2)
-            activeTp2Line := line.new(bar_index, activeTradeTp2, bar_index, activeTradeTp2, extend=extend.right, color=color.new(color.green, 35), style=line.style_dotted)
-
-tradeStopHit = activeTradeDir == 1 ? low <= activeTradeStop : activeTradeDir == -1 ? high >= activeTradeStop : false
-tradeTp2Hit = activeTradeDir == 1 ? (tp2Enabled and not na(activeTradeTp2) and high >= activeTradeTp2) : activeTradeDir == -1 ? (tp2Enabled and not na(activeTradeTp2) and low <= activeTradeTp2) : false
-if activeTradeDir != 0 and (tradeStopHit or tradeTp2Hit)
-    activeTradeDir := 0
-    activeTradeEntry := na
-    activeTradeStop := na
-    activeTradeTp1 := na
-    activeTradeTp2 := na
-    if not na(activeEntryLine)
-        line.delete(activeEntryLine)
-        activeEntryLine := na
-    if not na(activeStopLine)
-        line.delete(activeStopLine)
-        activeStopLine := na
-    if not na(activeTp1Line)
-        line.delete(activeTp1Line)
-        activeTp1Line := na
-    if not na(activeTp2Line)
-        line.delete(activeTp2Line)
-        activeTp2Line := na
-
-barcolor(enableCandleColors ? (activeTradeDir == 1 ? activeLongCandleColor : activeTradeDir == -1 ? activeShortCandleColor : neutralCandleColor) : na)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
