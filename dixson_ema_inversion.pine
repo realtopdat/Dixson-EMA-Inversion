@@ -158,9 +158,11 @@ shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-longFillPlot = plot(showEma ? logicEma : na, "Long EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
-shortFillPlot = plot(showEma ? shortEmaLogic : na, "Short EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
-fillColor = shortEmaLogic >= logicEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+longFillSeries = (longMtfSmoothMode and longEmaTf != "") ? nz(plotEma, plotEma[1]) : logicEma
+shortFillSeries = (shortMtfSmoothMode and shortEmaTf != "") ? nz(shortEmaPlot, shortEmaPlot[1]) : shortEmaLogic
+longFillPlot = plot(showEma ? longFillSeries : na, "Long EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
+shortFillPlot = plot(showEma ? shortFillSeries : na, "Short EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
+fillColor = shortFillSeries >= longFillSeries ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
 fill(longFillPlot, shortFillPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 //━━━━━━━━━━━━━━━━━━━━
