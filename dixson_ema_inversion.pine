@@ -158,12 +158,8 @@ shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-chartLongFill = ta.ema(emaSource, longEmaLength)
-chartShortFill = ta.ema(emaSource, shortEmaLength)
-longFillRefPlot = plot(showEma ? chartLongFill : na, "Long EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
-shortFillRefPlot = plot(showEma ? chartShortFill : na, "Short EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
-fillColor = chartShortFill >= chartLongFill ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longFillRefPlot, shortFillRefPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
+fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
