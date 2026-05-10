@@ -158,8 +158,10 @@ shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
+longFillPlot = plot(showEma ? logicEma : na, "Long EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
+shortFillPlot = plot(showEma ? shortEmaLogic : na, "Short EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
+fillColor = shortEmaLogic >= logicEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+fill(longFillPlot, shortFillPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
@@ -306,7 +308,7 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
     touchWindowStart = latestBearFvgBar - emaTouchBarsBefore
     touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBearIfvgBar
     confirmBullClose = close > logicEma
-    trendBullOk = shortEmaPlot > plotEma
+    trendBullOk = shortEmaLogic > logicEma
     if touchWindowOk and confirmBullClose and trendBullOk
         latestBearSignalDone := true
         bullEntryAlert := true
@@ -322,7 +324,7 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
     touchWindowStart = latestBullFvgBar - emaTouchBarsBefore
     touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBullIfvgBar
     confirmBearClose = close < logicEma
-    trendBearOk = shortEmaPlot < plotEma
+    trendBearOk = shortEmaLogic < logicEma
     if touchWindowOk and confirmBearClose and trendBearOk
         latestBullSignalDone := true
         bearEntryAlert := true
