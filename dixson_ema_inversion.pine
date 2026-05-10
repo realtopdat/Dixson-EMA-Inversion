@@ -146,8 +146,8 @@ shortPlotSeries = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA", s
 shortLogicSeries = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfSmoothMode)
 
 logicEma = longLogicSeries
-longVisualSmooth = nz(longPlotSeries, longPlotSeries[1])
-shortVisualSmooth = nz(shortPlotSeries, shortPlotSeries[1])
+longVisualSmooth = longLogicSeries
+shortVisualSmooth = shortLogicSeries
 plotEma = longMtfSmoothMode ? longVisualSmooth : longLogicSeries
 shortEmaLogic = shortLogicSeries
 shortEmaPlot = shortMtfSmoothMode ? shortVisualSmooth : shortLogicSeries
