@@ -160,8 +160,10 @@ longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linew
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
 longFillState = nz(plotEma, plotEma[1])
 shortFillState = nz(shortEmaPlot, shortEmaPlot[1])
+longFillRefPlot = plot(showEma ? longFillState : na, "Long Fill Ref", color=color.new(color.white, 100), display=display.none)
+shortFillRefPlot = plot(showEma ? shortFillState : na, "Short Fill Ref", color=color.new(color.white, 100), display=display.none)
 fillColor = shortFillState >= longFillState ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
+fill(longFillRefPlot, shortFillRefPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
