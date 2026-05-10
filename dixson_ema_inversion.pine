@@ -158,7 +158,9 @@ shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+longFillState = nz(plotEma, plotEma[1])
+shortFillState = nz(shortEmaPlot, shortEmaPlot[1])
+fillColor = shortFillState >= longFillState ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
 fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 //━━━━━━━━━━━━━━━━━━━━
