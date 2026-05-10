@@ -146,9 +146,9 @@ shortPlotSeries = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA", s
 shortLogicSeries = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfSmoothMode)
 
 logicEma = longLogicSeries
-plotEma = longLogicSeries
+plotEma = longMtfSmoothMode ? nz(longPlotSeries, longLogicSeries) : longLogicSeries
 shortEmaLogic = shortLogicSeries
-shortEmaPlot = shortLogicSeries
+shortEmaPlot = shortMtfSmoothMode ? nz(shortPlotSeries, shortLogicSeries) : shortLogicSeries
 
 longEmaColorDyn = close >= logicEma ? bullTrendColor : bearTrendColor
 shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
