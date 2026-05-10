@@ -147,8 +147,8 @@ shortPlotSeries = f_getConverted(shortEmaTf, emaSource, shortEmaLength, "EMA", s
 shortLogicSeries = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, "EMA", shortMtfSmoothMode)
 
 logicEma = longLogicSeries
-longVisualSmooth = longLogicSeries
-shortVisualSmooth = shortLogicSeries
+longVisualSmooth = longPlotSeries
+shortVisualSmooth = shortPlotSeries
 plotEma = longMtfSmoothMode ? longVisualSmooth : longLogicSeries
 shortEmaLogic = shortLogicSeries
 shortEmaPlot = shortMtfSmoothMode ? shortVisualSmooth : shortLogicSeries
@@ -158,8 +158,8 @@ shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-longFillSeries = plotEma
-shortFillSeries = shortEmaPlot
+longFillSeries = logicEma
+shortFillSeries = shortEmaLogic
 longFillPlot = plot(showEma ? longFillSeries : na, "Long EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
 shortFillPlot = plot(showEma ? shortFillSeries : na, "Short EMA Fill Ref", color=color.new(color.white, 100), display=display.none)
 fillColor = shortFillSeries >= longFillSeries ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
