@@ -1,0 +1,1367 @@
+//@version=6
+library("DixsonIFVGLibrary", overlay=true)
+
+joinLabel(string base, string piece) =>
+    str.length(base) > 0 ? base + " | " + piece : piece
+
+export joinComma(string base, string piece) =>
+    str.length(base) > 0 ? base + ", " + piece : piece
+
+export tfLabel(string tfStr) =>
+    if str.length(tfStr) == 0
+        ""
+    else
+        float tfNum = str.tonumber(tfStr)
+        if not na(tfNum)
+            float minutes = tfNum
+            float hrs = minutes / 60.0
+            bool isHourTf = math.round(hrs) * 60.0 == minutes
+            if isHourTf
+                str.tostring(minutes / 60.0, "#") + "H"
+            else
+                tfStr + "M"
+        else
+            string lastCh = str.lower(str.substring(tfStr, str.length(tfStr) - 1, str.length(tfStr)))
+            string base   = str.substring(tfStr, 0, str.length(tfStr) - 1)
+            string numPart = str.length(base) > 0 ? base : "1"
+            lastCh == "d" ? numPart + "D" :
+             lastCh == "w" ? numPart + "W" :
+             lastCh == "m" ? numPart + "Mo" :
+             lastCh == "h" ? numPart + "H" :
+             tfStr + "M"
+
+export gapPercent(float front, float hi, float lo, bool fillsUp, float minTick) =>
+    math.min(math.max((fillsUp ? (front - lo) : (hi - front)) / math.max(hi - lo, minTick) * 100.0, 0.0), 100.0)
+
+export gapDistanceToPrice(float hi, float lo, float price) =>
+    float hiBand = math.max(hi, lo)
+    float loBand = math.min(hi, lo)
+    price >= loBand and price <= hiBand ? 0.0 : math.min(math.abs(price - loBand), math.abs(price - hiBand))
+
+export gapLabelText(string typeTxt, string tfTxt, bool includeTf, int originTime, float pctMit, bool showType, bool showTf, bool showDateTime, bool showPercent) =>
+    txt = ""
+    txt := showType ? joinLabel(txt, typeTxt) : txt
+    string tfPretty = includeTf and str.length(tfTxt) > 0 ? tfLabel(tfTxt) : ""
+    txt := showTf and str.length(tfPretty) > 0 ? joinLabel(txt, tfPretty) : txt
+    txt := showDateTime and not na(originTime) ? joinLabel(txt, str.format("{0,time,MM/dd/yy HH:mm}", originTime)) : txt
+    pctRounded = not na(pctMit) ? math.round(pctMit) : na
+    txt := showPercent and not na(pctRounded) ? joinLabel(txt, str.tostring(pctRounded, "#") + "%") : txt
+    txt
+
+export coreFvgLabelText(bool isInverted, string tfTxt, bool showTf) =>
+    string base = isInverted ? "IFVG" : "FVG"
+    showTf and str.length(tfTxt) > 0 ? base + " | " + tfTxt : base
+
+export cleanupCoreFvgsSessions(int ifvgSessionLookback, int cutoffSess,
+     box[] bullFvgBoxes, label[] bullFvgLabels, int[] bullFvgIndices, int[] bullFvgSess, bool[] bullFvgHandled, bool[] bullFvgInverted, bool[] bullEntryEligible, float[] bullFvgTops, float[] bullFvgBottoms, bool[] bullFvgTouchedLow, bool[] bullFvgTouchedHigh, bool[] bullFvgTouchedHtf1, bool[] bullFvgTouchedHtf2, bool[] bullFvgTouchedHtf3, bool[] bullFvgTouchedHtf4, int[] bullFvgTouchedHtf1Id, int[] bullFvgTouchedHtf2Id, int[] bullFvgTouchedHtf3Id, int[] bullFvgTouchedHtf4Id, bool[] bullFvgConfirmed,
+     box[] bearFvgBoxes, label[] bearFvgLabels, int[] bearFvgIndices, int[] bearFvgSess, bool[] bearFvgHandled, bool[] bearFvgInverted, bool[] bearEntryEligible, float[] bearFvgTops, float[] bearFvgBottoms, bool[] bearFvgTouchedLow, bool[] bearFvgTouchedHigh, bool[] bearFvgTouchedHtf1, bool[] bearFvgTouchedHtf2, bool[] bearFvgTouchedHtf3, bool[] bearFvgTouchedHtf4, int[] bearFvgTouchedHtf1Id, int[] bearFvgTouchedHtf2Id, int[] bearFvgTouchedHtf3Id, int[] bearFvgTouchedHtf4Id, bool[] bearFvgConfirmed) =>
+    if ifvgSessionLookback != 0
+        int bullN = array.size(bullFvgBoxes)
+        if bullN > 0
+            for i = bullN - 1 to 0
+                bool hasSess = i < array.size(bullFvgSess)
+                int sess = hasSess ? array.get(bullFvgSess, i) : na
+                if hasSess and sess < cutoffSess
+                    box bx = array.get(bullFvgBoxes, i)
+                    label lb = array.get(bullFvgLabels, i)
+                    if not na(bx)
+                        box.delete(bx)
+                    if not na(lb)
+                        label.delete(lb)
+                    array.remove(bullFvgBoxes, i)
+                    array.remove(bullFvgLabels, i)
+                    array.remove(bullFvgIndices, i)
+                    array.remove(bullFvgSess, i)
+                    array.remove(bullFvgHandled, i)
+                    array.remove(bullFvgInverted, i)
+                    array.remove(bullEntryEligible, i)
+                    array.remove(bullFvgTops, i)
+                    array.remove(bullFvgBottoms, i)
+                    array.remove(bullFvgTouchedLow, i)
+                    array.remove(bullFvgTouchedHigh, i)
+                    array.remove(bullFvgTouchedHtf1, i)
+                    array.remove(bullFvgTouchedHtf2, i)
+                    array.remove(bullFvgTouchedHtf3, i)
+                    array.remove(bullFvgTouchedHtf4, i)
+                    array.remove(bullFvgTouchedHtf1Id, i)
+                    array.remove(bullFvgTouchedHtf2Id, i)
+                    array.remove(bullFvgTouchedHtf3Id, i)
+                    array.remove(bullFvgTouchedHtf4Id, i)
+                    array.remove(bullFvgConfirmed, i)
+        int bearN = array.size(bearFvgBoxes)
+        if bearN > 0
+            for j = bearN - 1 to 0
+                bool hasSessS = j < array.size(bearFvgSess)
+                int sessS = hasSessS ? array.get(bearFvgSess, j) : na
+                if hasSessS and sessS < cutoffSess
+                    box bxS = array.get(bearFvgBoxes, j)
+                    label lbS = array.get(bearFvgLabels, j)
+                    if not na(bxS)
+                        box.delete(bxS)
+                    if not na(lbS)
+                        label.delete(lbS)
+                    array.remove(bearFvgBoxes, j)
+                    array.remove(bearFvgLabels, j)
+                    array.remove(bearFvgIndices, j)
+                    array.remove(bearFvgSess, j)
+                    array.remove(bearFvgHandled, j)
+                    array.remove(bearFvgInverted, j)
+                    array.remove(bearEntryEligible, j)
+                    array.remove(bearFvgTops, j)
+                    array.remove(bearFvgBottoms, j)
+                    array.remove(bearFvgTouchedLow, j)
+                    array.remove(bearFvgTouchedHigh, j)
+                    array.remove(bearFvgTouchedHtf1, j)
+                    array.remove(bearFvgTouchedHtf2, j)
+                    array.remove(bearFvgTouchedHtf3, j)
+                    array.remove(bearFvgTouchedHtf4, j)
+                    array.remove(bearFvgTouchedHtf1Id, j)
+                    array.remove(bearFvgTouchedHtf2Id, j)
+                    array.remove(bearFvgTouchedHtf3Id, j)
+                    array.remove(bearFvgTouchedHtf4Id, j)
+                    array.remove(bearFvgConfirmed, j)
+    false
+
+export renderCoreFvgLabels(bool showCoreFvgLabels, bool showBull, bool showBear, string coreFvgTfLabel, bool showCoreFvgLabelTf,
+     box[] bullFvgBoxes, label[] bullFvgLabels, bool[] bullFvgInverted,
+     box[] bearFvgBoxes, label[] bearFvgLabels, bool[] bearFvgInverted) =>
+    int bullLabelN = array.size(bullFvgBoxes)
+    if bullLabelN > 0
+        for i = 0 to bullLabelN - 1
+            box bx = array.get(bullFvgBoxes, i)
+            label lb = i < array.size(bullFvgLabels) ? array.get(bullFvgLabels, i) : na
+            bool showLbl = showCoreFvgLabels and showBull and not na(bx)
+            if showLbl
+                float top = box.get_top(bx)
+                float bot = box.get_bottom(bx)
+                float y = (top + bot) * 0.5
+                int x = box.get_right(bx)
+                bool isInverted = i < array.size(bullFvgInverted) and array.get(bullFvgInverted, i)
+                string lblTxt = coreFvgLabelText(isInverted, coreFvgTfLabel, showCoreFvgLabelTf)
+                if na(lb)
+                    lb := label.new(x, y, lblTxt, style=label.style_label_right, textcolor=color.white, color=color.new(color.black, 100), size=size.tiny)
+                else
+                    if label.get_x(lb) != x
+                        label.set_x(lb, x)
+                    if label.get_y(lb) != y
+                        label.set_y(lb, y)
+                    if label.get_text(lb) != lblTxt
+                        label.set_text(lb, lblTxt)
+                    label.set_color(lb, color.new(color.black, 100))
+                    label.set_textcolor(lb, color.white)
+                    label.set_size(lb, size.tiny)
+                    label.set_style(lb, label.style_label_right)
+                array.set(bullFvgLabels, i, lb)
+            else
+                if not na(lb)
+                    label.delete(lb)
+                if i < array.size(bullFvgLabels)
+                    array.set(bullFvgLabels, i, na)
+    int bearLabelN = array.size(bearFvgBoxes)
+    if bearLabelN > 0
+        for i = 0 to bearLabelN - 1
+            box bx = array.get(bearFvgBoxes, i)
+            label lb = i < array.size(bearFvgLabels) ? array.get(bearFvgLabels, i) : na
+            bool showLbl = showCoreFvgLabels and showBear and not na(bx)
+            if showLbl
+                float top = box.get_top(bx)
+                float bot = box.get_bottom(bx)
+                float y = (top + bot) * 0.5
+                int x = box.get_right(bx)
+                bool isInverted = i < array.size(bearFvgInverted) and array.get(bearFvgInverted, i)
+                string lblTxt = coreFvgLabelText(isInverted, coreFvgTfLabel, showCoreFvgLabelTf)
+                if na(lb)
+                    lb := label.new(x, y, lblTxt, style=label.style_label_right, textcolor=color.white, color=color.new(color.black, 100), size=size.tiny)
+                else
+                    if label.get_x(lb) != x
+                        label.set_x(lb, x)
+                    if label.get_y(lb) != y
+                        label.set_y(lb, y)
+                    if label.get_text(lb) != lblTxt
+                        label.set_text(lb, lblTxt)
+                    label.set_color(lb, color.new(color.black, 100))
+                    label.set_textcolor(lb, color.white)
+                    label.set_size(lb, size.tiny)
+                    label.set_style(lb, label.style_label_right)
+                array.set(bearFvgLabels, i, lb)
+            else
+                if not na(lb)
+                    label.delete(lb)
+                if i < array.size(bearFvgLabels)
+                    array.set(bearFvgLabels, i, na)
+
+export isActiveVisualBar() =>
+    barstate.islast or barstate.isrealtime
+
+export withinWindow(int barsSince, int barsWindow) =>
+    not na(barsSince) and barsSince <= barsWindow
+
+export findWindowSweepBar(bool wantBuyside, int windowStartBar, int[] sweeps, bool[] isHighs, int scanCap) =>
+    int out = na
+    if not na(windowStartBar) and array.size(sweeps) > 0
+        int processCap = math.min(array.size(sweeps), scanCap)
+        int scanStart = math.max(array.size(sweeps) - processCap, 0)
+        for idx = scanStart to array.size(sweeps) - 1
+            int sweepBar = array.size(sweeps) > idx ? array.get(sweeps, idx) : na
+            bool isHigh = array.size(isHighs) > idx ? array.get(isHighs, idx) : false
+            if not na(sweepBar) and isHigh == wantBuyside and sweepBar >= windowStartBar and sweepBar <= bar_index + 1
+                out := na(out) ? sweepBar : math.max(out, sweepBar)
+    out
+
+export bridgeOriginIdx(int[] fvgIndices, int currentOriginIdx, int bridgeBars) =>
+    int out = currentOriginIdx
+    if not na(currentOriginIdx) and bridgeBars > 0 and array.size(fvgIndices) > 0
+        int prevIdx = na
+        for i = 0 to array.size(fvgIndices) - 1
+            int idx = array.get(fvgIndices, i)
+            if idx < currentOriginIdx
+                prevIdx := na(prevIdx) ? idx : math.max(prevIdx, idx)
+        if not na(prevIdx) and currentOriginIdx - prevIdx <= bridgeBars
+            out := prevIdx
+    out
+
+export liqLabelText(string name, float price) =>
+    name + " / $" + str.tostring(price, format.mintick)
+
+export yesNo(bool cond) =>
+    cond ? "Yes" : "No"
+
+export hasActiveTradeDir(int dir, int[] tradeDirsArr, bool[] tradeActiveArr) =>
+    bool out = false
+    int n = math.min(array.size(tradeDirsArr), array.size(tradeActiveArr))
+    if n > 0
+        for i = 0 to n - 1
+            if array.get(tradeActiveArr, i) and array.get(tradeDirsArr, i) == dir
+                out := true
+                break
+    out
+
+export tradeEventVisualState(bool bullEntryTrade, bool bearEntryTrade, bool showSameDirectionTrades, bool showTradeLevels, int[] tradeDirsArr, bool[] tradeActiveArr) =>
+    bool allowBull = bullEntryTrade and (showSameDirectionTrades or not hasActiveTradeDir(1, tradeDirsArr, tradeActiveArr))
+    bool allowBear = bearEntryTrade and (showSameDirectionTrades or not hasActiveTradeDir(-1, tradeDirsArr, tradeActiveArr))
+    bool triggered = bullEntryTrade or bearEntryTrade
+    bool showForEvent = showTradeLevels and (bullEntryTrade ? allowBull : allowBear)
+    [triggered, showForEvent]
+
+
+export deleteLabelArray(label[] arr) =>
+    int sz = array.size(arr)
+    if sz > 0
+        for i = 0 to sz - 1
+            label lb = array.get(arr, i)
+            if not na(lb)
+                label.delete(lb)
+            array.set(arr, i, na)
+
+export trimSessionLevels(int cap, line[] hiLines, line[] loLines, label[] hiLabels, label[] loLabels, int[] starts) =>
+    if cap > 0
+        while array.size(starts) > cap
+            line hiLn = array.shift(hiLines)
+            line loLn = array.shift(loLines)
+            label hiLb = array.shift(hiLabels)
+            label loLb = array.shift(loLabels)
+            array.shift(starts)
+            if not na(hiLn)
+                line.delete(hiLn)
+            if not na(loLn)
+                line.delete(loLn)
+            if not na(hiLb)
+                label.delete(hiLb)
+            if not na(loLb)
+                label.delete(loLb)
+
+
+
+
+export sessionHigh(string sessionStr, string tz) =>
+    var float outHigh = na
+    bool inSess = not na(time(timeframe.period, sessionStr, tz))
+    if inSess and not inSess[1]
+        outHigh := high
+    else if inSess
+        outHigh := math.max(outHigh, high)
+    outHigh
+
+export sessionLow(string sessionStr, string tz) =>
+    var float outLow = na
+    bool inSess = not na(time(timeframe.period, sessionStr, tz))
+    if inSess and not inSess[1]
+        outLow := low
+    else if inSess
+        outLow := math.min(outLow, low)
+    outLow
+
+export sessionStartTime(string sessionStr, string tz) =>
+    var int outStart = na
+    bool inSess = not na(time(timeframe.period, sessionStr, tz))
+    if inSess and not inSess[1]
+        outStart := time
+    outStart
+
+
+export sessionDayLevels(string sessionStr, string tz) =>
+    var float dayHigh = na
+    var float dayLow = na
+    var float prevDayHigh = na
+    var float prevDayLow = na
+    var int sessionStart = na
+    bool inSess = not na(time(timeframe.period, sessionStr, tz))
+    bool sessDateChanged = inSess and (na(time[1]) or year(time, tz) != year(time[1], tz) or month(time, tz) != month(time[1], tz) or dayofmonth(time, tz) != dayofmonth(time[1], tz))
+    bool newSess = inSess and (not inSess[1] or sessDateChanged)
+    if newSess
+        prevDayHigh := dayHigh
+        prevDayLow := dayLow
+        dayHigh := high
+        dayLow := low
+        sessionStart := time
+    else if inSess
+        dayHigh := na(dayHigh) ? high : math.max(dayHigh, high)
+        dayLow := na(dayLow) ? low : math.min(dayLow, low)
+    [dayHigh, dayLow, prevDayHigh, prevDayLow, sessionStart, newSess]
+
+
+
+
+
+
+
+
+
+
+export liqEngine(int pivotLeft, int pivotRight) =>
+    float pivotHighRaw = ta.pivothigh(high, pivotLeft, pivotRight)
+    float pivotLowRaw = ta.pivotlow(low, pivotLeft, pivotRight)
+    bool highTrigger = not na(pivotHighRaw)
+    bool lowTrigger = not na(pivotLowRaw)
+    float pivotHighLevel = highTrigger ? pivotHighRaw : na
+    int pivotHighTime = highTrigger ? time[pivotRight] : na
+    float pivotLowLevel = lowTrigger ? pivotLowRaw : na
+    int pivotLowTime = lowTrigger ? time[pivotRight] : na
+
+    var float lastSwingHigh = na
+    var float lastSwingLow = na
+    var float rangeHigh = na
+    var float rangeLow = na
+    var bool rangeValid = false
+    var bool waitingForHigh = false
+    var bool waitingForLow = false
+    int rangeChangeTime = na
+    bool prevRangeValid = rangeValid
+
+    if not na(pivotHighRaw)
+        lastSwingHigh := pivotHighRaw
+    if not na(pivotLowRaw)
+        lastSwingLow := pivotLowRaw
+
+    bool bullMsb = not na(lastSwingHigh) and close > lastSwingHigh
+    bool bearMsb = not na(lastSwingLow) and close < lastSwingLow
+
+    if bullMsb
+        rangeLow := lastSwingLow
+        rangeHigh := na
+        rangeValid := false
+        waitingForHigh := true
+        waitingForLow := false
+        rangeChangeTime := time
+    if bearMsb
+        rangeHigh := lastSwingHigh
+        rangeLow := na
+        rangeValid := false
+        waitingForLow := true
+        waitingForHigh := false
+        rangeChangeTime := time
+
+    if waitingForHigh and not na(pivotHighRaw)
+        rangeHigh := pivotHighRaw
+        waitingForHigh := false
+        rangeValid := not na(rangeLow)
+        rangeChangeTime := time
+    if waitingForLow and not na(pivotLowRaw)
+        rangeLow := pivotLowRaw
+        waitingForLow := false
+        rangeValid := not na(rangeHigh)
+        rangeChangeTime := time
+
+    if not prevRangeValid and rangeValid
+        rangeChangeTime := na(rangeChangeTime) ? time : rangeChangeTime
+
+    [pivotHighLevel, pivotHighTime, pivotLowLevel, pivotLowTime, rangeHigh, rangeLow, rangeValid, rangeChangeTime]
+
+export gapCountAliveForSetDir(int[] gapSetId, bool[] gapIsBull, bool[] gapMitigated, int setId, bool isBull) =>
+    int count = 0
+    int n = array.size(gapSetId)
+    if n > 0
+        for idx = 0 to n - 1
+            if array.get(gapSetId, idx) == setId and array.get(gapIsBull, idx) == isBull and not array.get(gapMitigated, idx)
+                count += 1
+    count
+
+export upsertLiqLabelCore(label lb, int x, float price, string labelText, color txtColor, string labelXloc, string st, string loc, string align, bool showLabels, string lblSize) =>
+    label out = lb
+    if not showLabels or str.length(labelText) == 0
+        if not na(out)
+            label.delete(out)
+        out := na
+    else
+        if na(out)
+            out := label.new(x, price, labelText, style=st, yloc=loc, xloc=labelXloc,
+                 color=color.new(color.black, 100), textcolor=txtColor, size=lblSize, textalign=align)
+        else
+            label.set_xloc(out, x, labelXloc)
+            if label.get_y(out) != price
+                label.set_y(out, price)
+            if label.get_text(out) != labelText
+                label.set_text(out, labelText)
+            label.set_textcolor(out, txtColor)
+            label.set_size(out, lblSize)
+            label.set_yloc(out, loc)
+            label.set_style(out, st)
+            label.set_textalign(out, align)
+    out
+
+
+export upsertSessionKeyLevels(bool showLevels, bool useSweepDetection, float sessHigh, float sessLow, int sessStart,
+     int sessionLineEndTime, int sessionLookbackCap, color lineColor, string lineStyle, string lineExtendMode, int lineWidth,
+     string highLabelShort, string lowLabelShort, bool showLabels, string labelSize,
+     line[] highLines, line[] lowLines, label[] highLabels, label[] lowLabels, int[] sessionStarts, int lastSessionStart) =>
+    bool sweepHigh = false
+    bool sweepLow = false
+    int nextLastSessionStart = lastSessionStart
+    if showLevels and not na(sessHigh) and not na(sessLow) and not na(sessStart)
+        bool isNewSession = na(nextLastSessionStart) or sessStart != nextLastSessionStart
+        if isNewSession
+            array.push(highLines, line.new(sessStart, sessHigh, sessionLineEndTime, sessHigh, extend=lineExtendMode, color=lineColor, style=lineStyle, width=lineWidth, xloc=xloc.bar_time))
+            array.push(lowLines, line.new(sessStart, sessLow, sessionLineEndTime, sessLow, extend=lineExtendMode, color=lineColor, style=lineStyle, width=lineWidth, xloc=xloc.bar_time))
+            array.push(highLabels, upsertLiqLabelCore(na, time_close, sessHigh, liqLabelText(highLabelShort, sessHigh), lineColor, xloc.bar_time, label.style_none, yloc.price, text.align_left, showLabels, labelSize))
+            array.push(lowLabels, upsertLiqLabelCore(na, time_close, sessLow, liqLabelText(lowLabelShort, sessLow), lineColor, xloc.bar_time, label.style_none, yloc.price, text.align_left, showLabels, labelSize))
+            array.push(sessionStarts, sessStart)
+            nextLastSessionStart := sessStart
+        int idx = array.size(highLines) - 1
+        if idx >= 0
+            line hi = array.get(highLines, idx)
+            line lo = array.get(lowLines, idx)
+            label hiLb = array.get(highLabels, idx)
+            label loLb = array.get(lowLabels, idx)
+            line.set_xloc(hi, sessStart, time_close, xloc.bar_time)
+            line.set_y1(hi, sessHigh)
+            line.set_y2(hi, sessHigh)
+            line.set_color(hi, lineColor)
+            line.set_style(hi, lineStyle)
+            line.set_extend(hi, lineExtendMode)
+            line.set_xloc(lo, sessStart, time_close, xloc.bar_time)
+            line.set_y1(lo, sessLow)
+            line.set_y2(lo, sessLow)
+            line.set_color(lo, lineColor)
+            line.set_style(lo, lineStyle)
+            line.set_extend(lo, lineExtendMode)
+            hiLb := upsertLiqLabelCore(hiLb, time_close, sessHigh, liqLabelText(highLabelShort, sessHigh), lineColor, xloc.bar_time, label.style_none, yloc.price, text.align_left, showLabels, labelSize)
+            loLb := upsertLiqLabelCore(loLb, time_close, sessLow, liqLabelText(lowLabelShort, sessLow), lineColor, xloc.bar_time, label.style_none, yloc.price, text.align_left, showLabels, labelSize)
+            array.set(highLabels, idx, hiLb)
+            array.set(lowLabels, idx, loLb)
+        if useSweepDetection
+            sweepHigh := (high > sessHigh and close < sessHigh) or (high[1] > sessHigh and close < sessHigh)
+            sweepLow := (low < sessLow and close > sessLow) or (low[1] < sessLow and close > sessLow)
+        trimSessionLevels(sessionLookbackCap, highLines, lowLines, highLabels, lowLabels, sessionStarts)
+    [sweepHigh, sweepLow, nextLastSessionStart]
+
+export upsertGapLabelCore(label lb, int x, float y, string txt, color bg, string sz, string labelStyle) =>
+    label out = lb
+    if str.length(txt) == 0
+        if not na(out)
+            label.delete(out)
+        out := na
+    else
+        if na(out)
+            out := label.new(x, y, txt, style=labelStyle, textcolor=color.white, color=bg, size=sz)
+        else
+            if label.get_x(out) != x
+                label.set_x(out, x)
+            if label.get_y(out) != y
+                label.set_y(out, y)
+            if label.get_text(out) != txt
+                label.set_text(out, txt)
+            label.set_color(out, bg)
+            label.set_textcolor(out, color.white)
+            label.set_size(out, sz)
+            label.set_style(out, labelStyle)
+    out
+
+
+export setLineHorzLite(line ln, float y, int x1, int x2, color lnColor, string lnStyle, string lnExtend) =>
+    if not na(ln)
+        line.set_y1(ln, y)
+        line.set_y2(ln, y)
+        line.set_x1(ln, x1)
+        line.set_x2(ln, x2)
+        line.set_color(ln, lnColor)
+        line.set_style(ln, lnStyle)
+        line.set_extend(ln, lnExtend)
+
+export flagHasBit(int flags, int bitMask) =>
+    math.floor(flags / bitMask) % 2 == 1
+
+export flagOrBit(int baseFlags, int addFlags, int[] bitMasks) =>
+    int out = baseFlags
+    int bitCount = array.size(bitMasks)
+    if bitCount > 0
+        for i = 0 to bitCount - 1
+            int bitMask = array.get(bitMasks, i)
+            if flagHasBit(addFlags, bitMask) and not flagHasBit(out, bitMask)
+                out += bitMask
+    out
+
+export computeLevelTfFlags(float lvl, bool isHigh, bool enableConfA, float reqThresholdTicks, float minTick, int tfBaseMask, int tfAMask, float[] pivPricesA, bool[] pivIsHighA) =>
+    int flags = tfBaseMask
+    if enableConfA
+        float threshold = reqThresholdTicks * minTick
+        int sz = math.min(array.size(pivPricesA), array.size(pivIsHighA))
+        bool matched = false
+        if sz > 0
+            for i = sz - 1 to 0
+                bool sameSide = array.get(pivIsHighA, i) == isHigh
+                float pivotPrice = array.get(pivPricesA, i)
+                if sameSide and math.abs(lvl - pivotPrice) <= threshold
+                    matched := true
+                    break
+        if matched
+            int[] bitMasks = array.from(tfAMask, tfBaseMask)
+            flags := flagOrBit(flags, tfAMask, bitMasks)
+    flags
+
+export mitigates(bool inWindow, float loBand, float hiBand, float wickLow, float wickHigh, float closePx, bool touchedLow, bool touchedHigh, bool isBull, bool useWick) =>
+    bool newTouchedLow = touchedLow
+    bool newTouchedHigh = touchedHigh
+    if inWindow
+        if wickLow <= loBand
+            newTouchedLow := true
+        if wickHigh >= hiBand
+            newTouchedHigh := true
+    bool isMitigated = false
+    if inWindow
+        if useWick
+            isMitigated := newTouchedLow and newTouchedHigh
+        else
+            isMitigated := isBull ? (newTouchedLow and newTouchedHigh and closePx >= hiBand) : (newTouchedLow and newTouchedHigh and closePx <= loBand)
+    [isMitigated, newTouchedLow, newTouchedHigh]
+
+export shrinkFormingZone(float hi, float lo, bool isBull, int originTime, int currentTfTime, float barHigh, float barLow) =>
+    float outHi = hi
+    float outLo = lo
+    bool changed = false
+    bool isForming = not na(originTime) and originTime == currentTfTime
+    if isForming and barHigh >= lo and barLow <= hi
+        if isBull
+            float shrinkLo = math.max(lo, math.min(barHigh, hi))
+            if shrinkLo != lo
+                outLo := shrinkLo
+                changed := true
+        else
+            float shrinkHi = math.min(hi, math.max(barLow, lo))
+            if shrinkHi != hi
+                outHi := shrinkHi
+                changed := true
+    [outHi, outLo, changed]
+
+export cleanupHtfMitigations(int[] mitigatedIds, int[] mitigatedBars, int cutoffBar) =>
+    int n = array.size(mitigatedIds)
+    if n > 0
+        for i = n - 1 to 0
+            int mitBar = array.get(mitigatedBars, i)
+            if na(mitBar) or mitBar < cutoffBar
+                array.remove(mitigatedIds, i)
+                array.remove(mitigatedBars, i)
+    false
+
+export htfTouchIdSide(float wickLow, float wickHigh, float[] tops, float[] bots, int[] ids) =>
+    int outId = na
+    int nZones = array.size(tops)
+    if nZones > 0
+        for i = 0 to nZones - 1
+            int idx = nZones - 1 - i
+            float top = array.get(tops, idx)
+            float bot = array.get(bots, idx)
+            float hi = math.max(top, bot)
+            float lo = math.min(top, bot)
+            if wickHigh >= lo and wickLow <= hi
+                outId := array.get(ids, idx)
+                break
+    outId
+
+export htfInsideIdSide(float price, float[] tops, float[] bots, int[] ids) =>
+    int outId = na
+    int nZones = array.size(tops)
+    if nZones > 0
+        for i = 0 to nZones - 1
+            int idx = nZones - 1 - i
+            float top = array.get(tops, idx)
+            float bot = array.get(bots, idx)
+            float hi = math.max(top, bot)
+            float lo = math.min(top, bot)
+            if price >= lo and price <= hi
+                outId := array.get(ids, idx)
+                break
+    outId
+
+export htfEligibleId(int id, int[] activeIds, int[] mitigatedIds, int[] mitigatedBars, int originIdx, int maxBars) =>
+    bool active = false
+    if not na(id)
+        int nIds = array.size(activeIds)
+        if nIds > 0
+            for i = 0 to nIds - 1
+                if array.get(activeIds, i) == id
+                    active := true
+                    break
+    bool mitigatedOk = false
+    bool noCap = maxBars <= 0
+    if not active and not na(id)
+        int n = array.size(mitigatedIds)
+        if n > 0
+            for i = 0 to n - 1
+                if array.get(mitigatedIds, i) == id
+                    int mitBar = array.get(mitigatedBars, i)
+                    mitigatedOk := not na(mitBar) and mitBar >= originIdx and (noCap or mitBar <= originIdx + maxBars)
+                    break
+    active or mitigatedOk
+
+export htfEligibleDelivery(int insideId, int touchId, int[] activeIds, int[] mitigatedIds, int[] mitigatedBars, int originIdx, int maxBars) =>
+    htfEligibleId(insideId, activeIds, mitigatedIds, mitigatedBars, originIdx, maxBars) or
+     htfEligibleId(touchId, activeIds, mitigatedIds, mitigatedBars, originIdx, maxBars)
+
+export htfDeliveryZoneStartedId(int id, int[] activeIds, int[] originTimes, int currentTfTime) =>
+    bool out = false
+    if not na(id) and not na(currentTfTime)
+        int nIds = math.min(array.size(activeIds), array.size(originTimes))
+        if nIds > 0
+            for i = 0 to nIds - 1
+                if array.get(activeIds, i) == id
+                    int originTime = array.get(originTimes, i)
+                    out := not na(originTime) and currentTfTime != originTime
+                    break
+    out
+
+export htfDeliveryFromStartedZones(int insideId, int touchId, int[] activeIds, int[] originTimes, int currentTfTime) =>
+    htfDeliveryZoneStartedId(insideId, activeIds, originTimes, currentTfTime) or
+     htfDeliveryZoneStartedId(touchId, activeIds, originTimes, currentTfTime)
+
+export clearTouchIds(int[] bullArr, int[] bearArr) =>
+    int nBull = array.size(bullArr)
+    if nBull > 0
+        for i = 0 to nBull - 1
+            array.set(bullArr, i, na)
+    int nBear = array.size(bearArr)
+    if nBear > 0
+        for j = 0 to nBear - 1
+            array.set(bearArr, j, na)
+    false
+
+findNearestStructureLevel(float anchor, bool wantHigh, bool wantAbove, int[] msDirs, float[] msLevels, bool[] liqIsHighs, float[] liqLevels) =>
+    float out = na
+    int msCount = array.size(msLevels)
+    if msCount > 0
+        for i = 0 to msCount - 1
+            int dir = array.get(msDirs, i)
+            float lvl = array.get(msLevels, i)
+            bool sideOk = (wantHigh and dir == 1) or (not wantHigh and dir == -1)
+            bool dirOk = wantAbove ? lvl > anchor : lvl < anchor
+            if sideOk and dirOk
+                out := na(out) ? lvl : wantAbove ? math.min(out, lvl) : math.max(out, lvl)
+    int liqCount = array.size(liqLevels)
+    if liqCount > 0
+        for i = 0 to liqCount - 1
+            bool isHigh = array.get(liqIsHighs, i)
+            float lvl = array.get(liqLevels, i)
+            bool sideOk = (wantHigh and isHigh) or (not wantHigh and not isHigh)
+            bool dirOk = wantAbove ? lvl > anchor : lvl < anchor
+            if sideOk and dirOk
+                out := na(out) ? lvl : wantAbove ? math.min(out, lvl) : math.max(out, lvl)
+    out
+
+findNearestStructureLevelBefore(float anchor, bool wantHigh, bool wantAbove, int cutoffBar, int[] msDirs, float[] msLevels, int[] msBars, bool[] liqIsHighs, float[] liqLevels, int[] liqBars) =>
+    float out = na
+    int msCount = array.size(msLevels)
+    if msCount > 0
+        for i = 0 to msCount - 1
+            int lvlBar = array.size(msBars) > i ? array.get(msBars, i) : na
+            bool beforeCutoff = na(cutoffBar) or (not na(lvlBar) and lvlBar < cutoffBar)
+            int dir = array.get(msDirs, i)
+            float lvl = array.get(msLevels, i)
+            bool sideOk = (wantHigh and dir == 1) or (not wantHigh and dir == -1)
+            bool dirOk = wantAbove ? lvl > anchor : lvl < anchor
+            if beforeCutoff and sideOk and dirOk
+                out := na(out) ? lvl : wantAbove ? math.min(out, lvl) : math.max(out, lvl)
+    int liqCount = array.size(liqLevels)
+    if liqCount > 0
+        for i = 0 to liqCount - 1
+            int lvlBar = array.size(liqBars) > i ? array.get(liqBars, i) : na
+            bool beforeCutoff = na(cutoffBar) or (not na(lvlBar) and lvlBar < cutoffBar)
+            bool isHigh = array.get(liqIsHighs, i)
+            float lvl = array.get(liqLevels, i)
+            bool sideOk = (wantHigh and isHigh) or (not wantHigh and not isHigh)
+            bool dirOk = wantAbove ? lvl > anchor : lvl < anchor
+            if beforeCutoff and sideOk and dirOk
+                out := na(out) ? lvl : wantAbove ? math.min(out, lvl) : math.max(out, lvl)
+    out
+
+makeTradeLevelLine(int x, float lvl, color lnColor, bool showLevel) =>
+    showLevel and not na(lvl) ? line.new(x, lvl, x, lvl, xloc=xloc.bar_index, extend=extend.none, color=lnColor, width=1) : na
+
+makeTradeLevelLabel(int x, float lvl, string title, color txtColor, bool showLevel, bool showLabel) =>
+    showLevel and showLabel and not na(lvl) ? label.new(x, lvl, title + " • $" + str.tostring(lvl, format.mintick), style=label.style_label_left, yloc=yloc.price, textcolor=txtColor, color=color.new(color.black, 100), size=size.tiny) : na
+
+updateTradeLevelVisual(line ln, label lb, float lvl, string title, int endX) =>
+    if not na(lvl)
+        if not na(ln)
+            line.set_y1(ln, lvl)
+            line.set_y2(ln, lvl)
+            line.set_x2(ln, endX)
+        if not na(lb)
+            label.set_x(lb, endX)
+            label.set_y(lb, lvl)
+            label.set_text(lb, title + " • $" + str.tostring(lvl, format.mintick))
+
+endTradeVisualRow(int idx, int endX, line[] tradeEntryLines, line[] tradeStopLines, line[] tradeBeLines, line[] tradeR1Lines, line[] tradeR2Lines, line[] tradeTp1Lines, line[] tradeTp2Lines,
+     label[] tradeEntryLabels, label[] tradeStopLabels, label[] tradeBeLabels, label[] tradeR1Labels, label[] tradeR2Labels, label[] tradeTp1Labels, label[] tradeTp2Labels) =>
+    line lnEntry = array.get(tradeEntryLines, idx)
+    line lnStop = array.get(tradeStopLines, idx)
+    line lnBe = array.get(tradeBeLines, idx)
+    line lnR1 = array.get(tradeR1Lines, idx)
+    line lnR2 = array.get(tradeR2Lines, idx)
+    line lnTp1 = array.get(tradeTp1Lines, idx)
+    line lnTp2 = array.get(tradeTp2Lines, idx)
+    label lbEntry = array.get(tradeEntryLabels, idx)
+    label lbStop = array.get(tradeStopLabels, idx)
+    label lbBe = array.get(tradeBeLabels, idx)
+    label lbR1 = array.get(tradeR1Labels, idx)
+    label lbR2 = array.get(tradeR2Labels, idx)
+    label lbTp1 = array.get(tradeTp1Labels, idx)
+    label lbTp2 = array.get(tradeTp2Labels, idx)
+    if not na(lnEntry)
+        line.set_x2(lnEntry, endX)
+    if not na(lnStop)
+        line.set_x2(lnStop, endX)
+    if not na(lnBe)
+        line.set_x2(lnBe, endX)
+    if not na(lnR1)
+        line.set_x2(lnR1, endX)
+    if not na(lnR2)
+        line.set_x2(lnR2, endX)
+    if not na(lnTp1)
+        line.set_x2(lnTp1, endX)
+    if not na(lnTp2)
+        line.set_x2(lnTp2, endX)
+    if not na(lbEntry)
+        label.set_x(lbEntry, endX)
+    if not na(lbStop)
+        label.set_x(lbStop, endX)
+    if not na(lbBe)
+        label.set_x(lbBe, endX)
+    if not na(lbR1)
+        label.set_x(lbR1, endX)
+    if not na(lbR2)
+        label.set_x(lbR2, endX)
+    if not na(lbTp1)
+        label.set_x(lbTp1, endX)
+    if not na(lbTp2)
+        label.set_x(lbTp2, endX)
+
+deleteTradeVisualRow(int idx, line[] tradeEntryLines, line[] tradeStopLines, line[] tradeBeLines, line[] tradeR1Lines, line[] tradeR2Lines, line[] tradeTp1Lines, line[] tradeTp2Lines,
+     label[] tradeEntryLabels, label[] tradeStopLabels, label[] tradeBeLabels, label[] tradeR1Labels, label[] tradeR2Labels, label[] tradeTp1Labels, label[] tradeTp2Labels) =>
+    line lnEntry = array.get(tradeEntryLines, idx)
+    line lnStop = array.get(tradeStopLines, idx)
+    line lnBe = array.get(tradeBeLines, idx)
+    line lnR1 = array.get(tradeR1Lines, idx)
+    line lnR2 = array.get(tradeR2Lines, idx)
+    line lnTp1 = array.get(tradeTp1Lines, idx)
+    line lnTp2 = array.get(tradeTp2Lines, idx)
+    label lbEntry = array.get(tradeEntryLabels, idx)
+    label lbStop = array.get(tradeStopLabels, idx)
+    label lbBe = array.get(tradeBeLabels, idx)
+    label lbR1 = array.get(tradeR1Labels, idx)
+    label lbR2 = array.get(tradeR2Labels, idx)
+    label lbTp1 = array.get(tradeTp1Labels, idx)
+    label lbTp2 = array.get(tradeTp2Labels, idx)
+    if not na(lnEntry)
+        line.delete(lnEntry)
+    if not na(lnStop)
+        line.delete(lnStop)
+    if not na(lnBe)
+        line.delete(lnBe)
+    if not na(lnR1)
+        line.delete(lnR1)
+    if not na(lnR2)
+        line.delete(lnR2)
+    if not na(lnTp1)
+        line.delete(lnTp1)
+    if not na(lnTp2)
+        line.delete(lnTp2)
+    if not na(lbEntry)
+        label.delete(lbEntry)
+    if not na(lbStop)
+        label.delete(lbStop)
+    if not na(lbBe)
+        label.delete(lbBe)
+    if not na(lbR1)
+        label.delete(lbR1)
+    if not na(lbR2)
+        label.delete(lbR2)
+    if not na(lbTp1)
+        label.delete(lbTp1)
+    if not na(lbTp2)
+        label.delete(lbTp2)
+    array.set(tradeEntryLines, idx, na)
+    array.set(tradeStopLines, idx, na)
+    array.set(tradeBeLines, idx, na)
+    array.set(tradeR1Lines, idx, na)
+    array.set(tradeR2Lines, idx, na)
+    array.set(tradeTp1Lines, idx, na)
+    array.set(tradeTp2Lines, idx, na)
+    array.set(tradeEntryLabels, idx, na)
+    array.set(tradeStopLabels, idx, na)
+    array.set(tradeBeLabels, idx, na)
+    array.set(tradeR1Labels, idx, na)
+    array.set(tradeR2Labels, idx, na)
+    array.set(tradeTp1Labels, idx, na)
+    array.set(tradeTp2Labels, idx, na)
+
+export pruneTradeHistoryVisuals(int cap, line[] tradeEntryLines, line[] tradeStopLines, line[] tradeBeLines, line[] tradeR1Lines, line[] tradeR2Lines, line[] tradeTp1Lines, line[] tradeTp2Lines,
+     label[] tradeEntryLabels, label[] tradeStopLabels, label[] tradeBeLabels, label[] tradeR1Labels, label[] tradeR2Labels, label[] tradeTp1Labels, label[] tradeTp2Labels, bool[] tradeActive) =>
+    if cap > 0
+        while array.size(tradeEntryLines) > cap
+            int removeIdx = na
+            int visCount = array.size(tradeEntryLines)
+            if visCount > 0
+                for i = 0 to visCount - 1
+                    bool isActive = array.size(tradeActive) > i ? array.get(tradeActive, i) : false
+                    if not isActive
+                        removeIdx := i
+                        break
+            if na(removeIdx)
+                break
+            line oldEntryLn = array.remove(tradeEntryLines, removeIdx)
+            line oldStopLn = array.remove(tradeStopLines, removeIdx)
+            line oldBeLn = array.remove(tradeBeLines, removeIdx)
+            line oldR1Ln = array.remove(tradeR1Lines, removeIdx)
+            line oldR2Ln = array.remove(tradeR2Lines, removeIdx)
+            line oldTp1Ln = array.remove(tradeTp1Lines, removeIdx)
+            line oldTp2Ln = array.remove(tradeTp2Lines, removeIdx)
+            label oldEntryLb = array.remove(tradeEntryLabels, removeIdx)
+            label oldStopLb = array.remove(tradeStopLabels, removeIdx)
+            label oldBeLb = array.remove(tradeBeLabels, removeIdx)
+            label oldR1Lb = array.remove(tradeR1Labels, removeIdx)
+            label oldR2Lb = array.remove(tradeR2Labels, removeIdx)
+            label oldTp1Lb = array.remove(tradeTp1Labels, removeIdx)
+            label oldTp2Lb = array.remove(tradeTp2Labels, removeIdx)
+            if not na(oldEntryLn)
+                line.delete(oldEntryLn)
+            if not na(oldStopLn)
+                line.delete(oldStopLn)
+            if not na(oldBeLn)
+                line.delete(oldBeLn)
+            if not na(oldR1Ln)
+                line.delete(oldR1Ln)
+            if not na(oldR2Ln)
+                line.delete(oldR2Ln)
+            if not na(oldTp1Ln)
+                line.delete(oldTp1Ln)
+            if not na(oldTp2Ln)
+                line.delete(oldTp2Ln)
+            if not na(oldEntryLb)
+                label.delete(oldEntryLb)
+            if not na(oldStopLb)
+                label.delete(oldStopLb)
+            if not na(oldBeLb)
+                label.delete(oldBeLb)
+            if not na(oldR1Lb)
+                label.delete(oldR1Lb)
+            if not na(oldR2Lb)
+                label.delete(oldR2Lb)
+            if not na(oldTp1Lb)
+                label.delete(oldTp1Lb)
+            if not na(oldTp2Lb)
+                label.delete(oldTp2Lb)
+
+writeTableRow(table tb, int row, string leftTxt, string rightTxt, color leftColor, color rightColor, color cellBg, string txtSize) =>
+    table.cell(tb, 0, row, leftTxt, text_color=leftColor, bgcolor=cellBg, text_size=txtSize)
+    table.cell(tb, 1, row, rightTxt, text_color=rightColor, bgcolor=cellBg, text_size=txtSize)
+    row + 1
+
+export buildEntryLabelText(string headerText, float entryPriceIn, string barsDisplayIn, string deliveryDisplayIn, string sweepDisplayIn, string smtDisplayIn,
+     bool showHeader, bool showPrice, bool showBars, bool showSweep, bool showSmt, bool showLiquiditySweeps) =>
+    string txt = ""
+    if showHeader
+        txt := headerText
+    if showPrice
+        txt := (str.length(txt) > 0 ? txt + "\n" : "") + "$" + str.tostring(entryPriceIn, format.mintick)
+    if showBars
+        txt := (str.length(txt) > 0 ? txt + "\n" : "") + "V-Bars: " + barsDisplayIn
+    txt := (str.length(txt) > 0 ? txt + "\n" : "") + "Del: " + deliveryDisplayIn
+    if showSweep and showLiquiditySweeps
+        txt := (str.length(txt) > 0 ? txt + "\n" : "") + "Swp: " + sweepDisplayIn
+    if showSmt
+        txt := (str.length(txt) > 0 ? txt + "\n" : "") + "SMT: " + smtDisplayIn
+    txt
+
+export buildConfirmationLabelText(string headerText, float entryPriceIn, string gradeDisplayIn, string barsDisplayIn, string deliveryDisplayIn, string sweepDisplayIn, string mssDisplayIn, string smtDisplayIn,
+     bool showHeader, bool showPrice, bool showBars, bool showSweep, bool showSmt, bool showLiquiditySweeps) =>
+    string txt = ""
+    if showHeader
+        txt := headerText
+    if showPrice
+        txt := (str.length(txt) > 0 ? txt + "\n" : "") + "$" + str.tostring(entryPriceIn, format.mintick)
+    txt := (str.length(txt) > 0 ? txt + "\n" : "") + gradeDisplayIn
+    if showBars
+        txt := (str.length(txt) > 0 ? txt + "\n" : "") + "V-Shape: " + barsDisplayIn
+    if showSweep and showLiquiditySweeps
+        txt := (str.length(txt) > 0 ? txt + "\n" : "") + "Sweep: " + sweepDisplayIn
+    txt := (str.length(txt) > 0 ? txt + "\n" : "") + "Delivery: " + deliveryDisplayIn
+    txt := (str.length(txt) > 0 ? txt + "\n" : "") + "MSS: " + mssDisplayIn
+    if showSmt
+        txt := (str.length(txt) > 0 ? txt + "\n" : "") + "SMT: " + smtDisplayIn
+    txt
+
+export buildEntryMarkerTooltip(bool showConfirmationChecklist, bool showCurrentTradeTable, bool showMitLabelBars, bool showMitLabelSweep, bool showLiquiditySweeps, bool showStatLabelSmt,
+     string checklistGradeDisplay, string checklistBarsDisplay, string checklistSweepDisplay, string checklistDeliveryDisplay, string checklistMssDisplay, string checklistSmtDisplay,
+     bool hasCurrentTrade, int currentTradeDir, string currentEntryDisplay, string currentStopDisplay, string currentBeDisplay, string currentTp1Display, string currentTp2Display) =>
+    string txt = ""
+    if showCurrentTradeTable
+        string tradeDirDisplay = hasCurrentTrade ? (currentTradeDir == 1 ? "Long" : "Short") : "None"
+        txt += tradeDirDisplay
+        txt += "\nEntry: " + currentEntryDisplay
+        txt += "\nStop-Loss: " + currentStopDisplay
+        txt += "\nBE: " + currentBeDisplay
+        txt += "\nTP 1: " + currentTp1Display
+        txt += "\nTP 2: " + currentTp2Display
+    if showConfirmationChecklist
+        txt += (str.length(txt) > 0 ? "\n\n" : "") + "CONFIRMATION\n" + checklistGradeDisplay
+        if showMitLabelBars
+            txt += "\nV-Shape: " + checklistBarsDisplay
+        if showMitLabelSweep and showLiquiditySweeps
+            txt += "\nSweep: " + checklistSweepDisplay
+        txt += "\nDelivery: " + checklistDeliveryDisplay
+        txt += "\nMSS: " + checklistMssDisplay
+        if showStatLabelSmt
+            txt += "\nSMT: " + checklistSmtDisplay
+    txt
+
+findNthDirectionalLiquidity(float entryLevel, int tradeDir, int nthTarget, bool useMergeBands, float reqThresholdTicks, float minTick, float[] liqPrices, int[] liqSweeps) =>
+    float out = na
+    int found = 0
+    float lastFound = na
+    float mergeThreshold = useMergeBands ? (reqThresholdTicks * minTick) : 0.0
+    int liqCount = array.size(liqPrices)
+    if liqCount > 0 and nthTarget > 0
+        for step = 1 to nthTarget
+            float nextLevel = na
+            for i = 0 to liqCount - 1
+                float lvl = array.get(liqPrices, i)
+                int sweepBar = array.size(liqSweeps) > i ? array.get(liqSweeps, i) : na
+                bool isAlive = na(sweepBar)
+                bool dirOk = tradeDir == 1 ? lvl > entryLevel : lvl < entryLevel
+                bool afterLast = na(lastFound) ? true : tradeDir == 1 ? lvl > (lastFound + mergeThreshold) : lvl < (lastFound - mergeThreshold)
+                if isAlive and dirOk and afterLast
+                    nextLevel := na(nextLevel) ? lvl : tradeDir == 1 ? math.min(nextLevel, lvl) : math.max(nextLevel, lvl)
+            if not na(nextLevel)
+                found += 1
+                lastFound := nextLevel
+                if found == nthTarget
+                    out := nextLevel
+    out
+
+findDirectionalLiquidityWithMinMove(float entryLevel, int tradeDir, int nthQualified, float minMove, bool useMergeBands, float reqThresholdTicks, float minTick, float[] liqPrices, int[] liqSweeps) =>
+    float outLevel = na
+    int outRawNth = na
+    int qualifiedCount = 0
+    int liqCount = array.size(liqPrices)
+    int maxScan = liqCount > 0 ? liqCount : 0
+    if maxScan > 0 and nthQualified > 0
+        for rawNth = 1 to maxScan
+            float candidate = findNthDirectionalLiquidity(entryLevel, tradeDir, rawNth, useMergeBands, reqThresholdTicks, minTick, liqPrices, liqSweeps)
+            if na(candidate)
+                break
+            float move = math.abs(candidate - entryLevel)
+            if move >= minMove
+                qualifiedCount += 1
+                if qualifiedCount == nthQualified
+                    outLevel := candidate
+                    outRawNth := rawNth
+                    break
+    [outLevel, outRawNth]
+
+export computeTradeTargets(int tradeDir, float entryLevel, int originBar, int[] msZZDir, float[] msZZY, int[] msZZX, bool[] liqIsHighs, float[] liqPrices, int[] liqStartBars,
+     int[] liqSweeps, bool useMergeBands, float reqThresholdTicks, float minTick) =>
+    float stopLevel = tradeDir == 1 ? findNearestStructureLevelBefore(entryLevel, false, false, originBar, msZZDir, msZZY, msZZX, liqIsHighs, liqPrices, liqStartBars) : findNearestStructureLevelBefore(entryLevel, true, true, originBar, msZZDir, msZZY, msZZX, liqIsHighs, liqPrices, liqStartBars)
+    float liq1Level = findNthDirectionalLiquidity(entryLevel, tradeDir, 1, useMergeBands, reqThresholdTicks, minTick, liqPrices, liqSweeps)
+    float liq2Level = findNthDirectionalLiquidity(entryLevel, tradeDir, 2, useMergeBands, reqThresholdTicks, minTick, liqPrices, liqSweeps)
+    float liq3Level = findNthDirectionalLiquidity(entryLevel, tradeDir, 3, useMergeBands, reqThresholdTicks, minTick, liqPrices, liqSweeps)
+    [stopLevel, liq1Level, liq2Level, liq3Level]
+
+appendTradeVisuals(int x, float entryLevel, float stopLevel, float beLevel, float r1Level, float r2Level, float tp1Level, float tp2Level,
+     string beTitle, string r1Title, string r2Title, string tp1Title, string tp2Title,
+     bool showEntryLevel, bool showStopLevel, bool showBeLevel, bool showR1Level, bool showR2Level, bool showTp1Level, bool showTp2Level,
+     bool showEntryPriceLabel, bool showStopPriceLabel, bool showBePriceLabel, bool showR1PriceLabel, bool showR2PriceLabel, bool showTp1PriceLabel, bool showTp2PriceLabel,
+     color entryLineColor, color stopLineColor, color beLineColor, color r1LineColor, color r2LineColor, color tp1LineColor, color tp2LineColor,
+     line[] tradeEntryLines, line[] tradeStopLines, line[] tradeBeLines, line[] tradeR1Lines, line[] tradeR2Lines, line[] tradeTp1Lines, line[] tradeTp2Lines,
+     label[] tradeEntryLabels, label[] tradeStopLabels, label[] tradeBeLabels, label[] tradeR1Labels, label[] tradeR2Labels, label[] tradeTp1Labels, label[] tradeTp2Labels) =>
+    array.push(tradeEntryLines, makeTradeLevelLine(x, entryLevel, entryLineColor, showEntryLevel))
+    array.push(tradeStopLines, makeTradeLevelLine(x, stopLevel, stopLineColor, showStopLevel))
+    array.push(tradeBeLines, makeTradeLevelLine(x, beLevel, beLineColor, showBeLevel))
+    array.push(tradeR1Lines, makeTradeLevelLine(x, r1Level, r1LineColor, showR1Level))
+    array.push(tradeR2Lines, makeTradeLevelLine(x, r2Level, r2LineColor, showR2Level))
+    array.push(tradeTp1Lines, makeTradeLevelLine(x, tp1Level, tp1LineColor, showTp1Level))
+    array.push(tradeTp2Lines, makeTradeLevelLine(x, tp2Level, tp2LineColor, showTp2Level))
+    array.push(tradeEntryLabels, makeTradeLevelLabel(x, entryLevel, "Entry", entryLineColor, showEntryLevel, showEntryPriceLabel))
+    array.push(tradeStopLabels, makeTradeLevelLabel(x, stopLevel, "SL", stopLineColor, showStopLevel, showStopPriceLabel))
+    array.push(tradeBeLabels, makeTradeLevelLabel(x, beLevel, beTitle, beLineColor, showBeLevel, showBePriceLabel))
+    array.push(tradeR1Labels, makeTradeLevelLabel(x, r1Level, r1Title, r1LineColor, showR1Level, showR1PriceLabel))
+    array.push(tradeR2Labels, makeTradeLevelLabel(x, r2Level, r2Title, r2LineColor, showR2Level, showR2PriceLabel))
+    array.push(tradeTp1Labels, makeTradeLevelLabel(x, tp1Level, tp1Title, tp1LineColor, showTp1Level, showTp1PriceLabel))
+    array.push(tradeTp2Labels, makeTradeLevelLabel(x, tp2Level, tp2Title, tp2LineColor, showTp2Level, showTp2PriceLabel))
+
+export renderEntryOverlay(table tb, bool showConfirmationChecklist, bool showCurrentTradeTable, bool showMitLabelBars, bool showMitLabelSweep,
+     bool showLiquiditySweeps, bool showStatLabelSmt,
+     string checklistGradeDisplay, string checklistBarsDisplay, string checklistSweepDisplay, string checklistDeliveryDisplay, string checklistMssDisplay, string checklistSmtDisplay,
+     bool hasCurrentTrade, int currentTradeDir, string currentEntryDisplay, string currentStopDisplay, string currentBeDisplay, string currentTp1Display, string currentTp2Display,
+     color overlayAccent, color overlayHeaderBg, color overlayCellBg, color overlayClearBg, color tradeLongColor, color tradeShortColor, string tableTextSize) =>
+    int nextRow = 0
+    if showConfirmationChecklist
+        table.cell(tb, 0, nextRow, "CONFIRMATION", text_color=color.white, bgcolor=overlayHeaderBg, text_size=tableTextSize)
+        table.cell(tb, 1, nextRow, checklistGradeDisplay, text_color=overlayAccent, bgcolor=overlayCellBg, text_size=tableTextSize)
+        nextRow += 1
+        if showMitLabelBars
+            nextRow := writeTableRow(tb, nextRow, "V-Shape", checklistBarsDisplay, color.white, color.white, overlayCellBg, tableTextSize)
+        if showMitLabelSweep and showLiquiditySweeps
+            nextRow := writeTableRow(tb, nextRow, "Sweep", checklistSweepDisplay, color.white, color.white, overlayCellBg, tableTextSize)
+        nextRow := writeTableRow(tb, nextRow, "Delivery", checklistDeliveryDisplay, color.white, color.white, overlayCellBg, tableTextSize)
+        nextRow := writeTableRow(tb, nextRow, "MSS", checklistMssDisplay, color.white, color.white, overlayCellBg, tableTextSize)
+        if showStatLabelSmt
+            nextRow := writeTableRow(tb, nextRow, "SMT", checklistSmtDisplay, color.white, color.white, overlayCellBg, tableTextSize)
+    if showCurrentTradeTable
+        string currentTradeDirection = hasCurrentTrade ? (currentTradeDir == 1 ? "Long" : "Short") : "None"
+        color currentTradeDirectionColor = hasCurrentTrade ? (currentTradeDir == 1 ? tradeLongColor : tradeShortColor) : color.white
+        table.cell(tb, 0, nextRow, "ACTIVE TRADE", text_color=color.white, bgcolor=overlayHeaderBg, text_size=tableTextSize)
+        table.cell(tb, 1, nextRow, currentTradeDirection, text_color=currentTradeDirectionColor, bgcolor=overlayCellBg, text_size=tableTextSize)
+        nextRow += 1
+        nextRow := writeTableRow(tb, nextRow, "Entry", currentEntryDisplay, color.white, color.white, overlayCellBg, tableTextSize)
+        nextRow := writeTableRow(tb, nextRow, "Stop-Loss", currentStopDisplay, color.white, color.white, overlayCellBg, tableTextSize)
+        nextRow := writeTableRow(tb, nextRow, "BE", currentBeDisplay, color.white, color.white, overlayCellBg, tableTextSize)
+        nextRow := writeTableRow(tb, nextRow, "TP 1", currentTp1Display, color.white, color.white, overlayCellBg, tableTextSize)
+        nextRow := writeTableRow(tb, nextRow, "TP 2", currentTp2Display, color.white, color.white, overlayCellBg, tableTextSize)
+    if nextRow <= 15
+        for clearRow = nextRow to 15
+            table.cell(tb, 0, clearRow, "", text_color=color.white, bgcolor=overlayClearBg, text_size=tableTextSize)
+            table.cell(tb, 1, clearRow, "", text_color=color.white, bgcolor=overlayClearBg, text_size=tableTextSize)
+
+export computeChecklistState(bool lastHasState, int lastConfirmedEntryDir, int lastConfirmedBarsToMit, int vShapeBarsDisplay, string lastConfirmedDeliveryDisplay, string lastConfirmedSweepDisplay, string lastConfirmedSmtDisplay,
+     bool activeLongState, bool activeShortState, int bullBarsToMit, int bearBarsToMit, string bullDeliveredTFs, bool bullDeliveredAny, string bearDeliveredTFs, bool bearDeliveredAny,
+     bool showLiquiditySweeps, bool bullSweepInWindow, bool bearSweepInWindow, bool enableSmtDivergence, bool bullSmtWindowHit, bool bearSmtWindowHit, int msDir) =>
+    int checklistDir = lastHasState ? lastConfirmedEntryDir : activeLongState ? 1 : activeShortState ? -1 : 0
+    int checklistBars = lastHasState ? lastConfirmedBarsToMit : checklistDir == 1 ? bullBarsToMit : checklistDir == -1 ? bearBarsToMit : na
+    string checklistBarsDisplay = not na(checklistBars) ? ((checklistBars <= vShapeBarsDisplay ? "✅ " : "❌ ") + str.tostring(checklistBars)) : "━"
+    string checklistDeliveryDisplay = lastHasState ? lastConfirmedDeliveryDisplay :
+         checklistDir == 1 ? (str.length(bullDeliveredTFs) > 0 ? "✅ " + bullDeliveredTFs : bullDeliveredAny ? "✅" : "❌") :
+         checklistDir == -1 ? (str.length(bearDeliveredTFs) > 0 ? "✅ " + bearDeliveredTFs : bearDeliveredAny ? "✅" : "❌") : "━"
+    string checklistSweepDisplay = lastHasState ? lastConfirmedSweepDisplay :
+         checklistDir == 1 ? (showLiquiditySweeps ? (bullSweepInWindow ? "✅ SSL" : "❌") : "━") :
+         checklistDir == -1 ? (showLiquiditySweeps ? (bearSweepInWindow ? "✅ BSL" : "❌") : "━") : "━"
+    string checklistSmtDisplay = lastHasState ? lastConfirmedSmtDisplay :
+         checklistDir == 1 ? (enableSmtDivergence ? (bullSmtWindowHit ? "✅" : "❌") : "━") :
+         checklistDir == -1 ? (enableSmtDivergence ? (bearSmtWindowHit ? "✅" : "❌") : "━") : "━"
+    string checklistMssDisplay = checklistDir != 0 ? (msDir == 0 ? "━" : ((checklistDir == 1 and msDir == 1) or (checklistDir == -1 and msDir == -1) ? "✅" : "❌")) : "━"
+    [checklistBarsDisplay, checklistDeliveryDisplay, checklistSweepDisplay, checklistSmtDisplay, checklistMssDisplay]
+
+displayPasses(string displayIn) =>
+    str.pos(displayIn, "✅") == 0
+
+deliveryBuckets(string deliveryDisplayIn) =>
+    bool hasContinuation = false
+    bool hasReversal = false
+    string normalized = str.replace_all(str.replace_all(deliveryDisplayIn, "✅", ""), " ", "")
+    if str.length(normalized) > 0
+        string[] parts = str.split(normalized, ",")
+        int partCount = array.size(parts)
+        if partCount > 0
+            for i = 0 to partCount - 1
+                string tfToken = array.get(parts, i)
+                int tokenLen = str.length(tfToken)
+                if tokenLen >= 2
+                    string lastTwo = str.lower(str.substring(tfToken, tokenLen - 2, tokenLen))
+                    string lastOne = str.lower(str.substring(tfToken, tokenLen - 1, tokenLen))
+                    if lastTwo == "mo" or lastOne == "h" or lastOne == "d" or lastOne == "w"
+                        hasReversal := true
+                    else if lastOne == "m"
+                        float tfMinutes = str.tonumber(str.substring(tfToken, 0, tokenLen - 1))
+                        if not na(tfMinutes)
+                            hasContinuation := hasContinuation or tfMinutes == 5 or tfMinutes == 15
+                            hasReversal := hasReversal or tfMinutes >= 30
+    [hasContinuation, hasReversal]
+
+export computeChecklistGrade(string checklistDeliveryDisplay, string checklistSweepDisplay, string checklistMssDisplay, string checklistBarsDisplay) =>
+    bool noChecklistContext = checklistDeliveryDisplay == "━" and checklistSweepDisplay == "━" and checklistMssDisplay == "━" and checklistBarsDisplay == "━"
+    bool hasSweep = displayPasses(checklistSweepDisplay)
+    bool hasMss = displayPasses(checklistMssDisplay)
+    bool hasVShape = displayPasses(checklistBarsDisplay)
+    [isContinuationBucket, isReversalBucket] = deliveryBuckets(checklistDeliveryDisplay)
+    bool qualifiesA = isReversalBucket or (isContinuationBucket and hasMss)
+    if noChecklistContext
+        "━"
+    else if qualifiesA
+        hasSweep ? "A+" : "A"
+    else
+        isContinuationBucket and (not hasMss) and hasVShape ? "B" : "C"
+
+mitigationStopFromWindow(int tradeDir, int originBar) =>
+    int barsSinceOrigin = not na(originBar) ? (bar_index - originBar) : na
+    float out = na
+    if not na(barsSinceOrigin) and barsSinceOrigin > 1
+        int lookbackBars = barsSinceOrigin + 2
+        float extreme = na
+        for j = 1 to lookbackBars
+            if j != barsSinceOrigin
+                float candidate = tradeDir == 1 ? low[j] : high[j]
+                if not na(candidate)
+                    extreme := na(extreme) ? candidate : tradeDir == 1 ? math.min(extreme, candidate) : math.max(extreme, candidate)
+        out := extreme
+    out
+
+originFormationStop(int tradeDir, int originBar) =>
+    int barsSinceOrigin = not na(originBar) ? (bar_index - originBar) : na
+    float out = na
+    if not na(barsSinceOrigin) and barsSinceOrigin >= 0
+        int startIdx = barsSinceOrigin
+        int endIdx = barsSinceOrigin + 3
+        float extreme = na
+        for j = startIdx to endIdx
+            if j >= 0
+                float candidate = tradeDir == 1 ? low[j] : high[j]
+                if not na(candidate)
+                    extreme := na(extreme) ? candidate : tradeDir == 1 ? math.min(extreme, candidate) : math.max(extreme, candidate)
+        out := extreme
+    out
+
+export currentTradeDisplay(int currentTradeDirStored, float currentTradeEntryStored, float currentTradeStopStored, float currentTradeBeStored, float currentTradeTp1Stored, float currentTradeTp2Stored) =>
+    bool hasCurrentTrade = currentTradeDirStored != 0
+    string currentEntryDisplay = hasCurrentTrade and not na(currentTradeEntryStored) ? str.tostring(currentTradeEntryStored, format.mintick) : "━"
+    string currentStopDisplay = hasCurrentTrade and not na(currentTradeStopStored) ? str.tostring(currentTradeStopStored, format.mintick) : "━"
+    string currentBeDisplay = hasCurrentTrade and not na(currentTradeBeStored) ? str.tostring(currentTradeBeStored, format.mintick) : "━"
+    string currentTp1Display = hasCurrentTrade and not na(currentTradeTp1Stored) ? str.tostring(currentTradeTp1Stored, format.mintick) : "━"
+    string currentTp2Display = hasCurrentTrade and not na(currentTradeTp2Stored) ? str.tostring(currentTradeTp2Stored, format.mintick) : "━"
+    [hasCurrentTrade, currentEntryDisplay, currentStopDisplay, currentBeDisplay, currentTp1Display, currentTp2Display]
+
+pushTradeState(int tradeDir, float stopLevel, float beLevel, float r1Level, float r2Level, float tp1Level, float tp2Level, int[] tradeDirs, float[] tradeStops, float[] tradeBEs, float[] tradeR1s, float[] tradeR2s, float[] tradeTP1s, float[] tradeTP2s, bool[] tradeActive, bool[] tradeStopMoved) =>
+    array.push(tradeDirs, tradeDir)
+    array.push(tradeStops, stopLevel)
+    array.push(tradeBEs, beLevel)
+    array.push(tradeR1s, r1Level)
+    array.push(tradeR2s, r2Level)
+    array.push(tradeTP1s, tp1Level)
+    array.push(tradeTP2s, tp2Level)
+    array.push(tradeActive, true)
+    array.push(tradeStopMoved, false)
+
+export pruneTradeState(int cap, int[] tradeDirs, float[] tradeStops, float[] tradeBEs, float[] tradeR1s, float[] tradeR2s, float[] tradeTP1s, float[] tradeTP2s, bool[] tradeActive, bool[] tradeStopMoved) =>
+    if cap > 0
+        while array.size(tradeDirs) > cap
+            int removeIdx = na
+            int stateCount = array.size(tradeDirs)
+            if stateCount > 0
+                for i = 0 to stateCount - 1
+                    bool isActive = array.size(tradeActive) > i ? array.get(tradeActive, i) : false
+                    if not isActive
+                        removeIdx := i
+                        break
+            if na(removeIdx)
+                break
+            array.remove(tradeDirs, removeIdx)
+            array.remove(tradeStops, removeIdx)
+            array.remove(tradeBEs, removeIdx)
+            array.remove(tradeR1s, removeIdx)
+            array.remove(tradeR2s, removeIdx)
+            array.remove(tradeTP1s, removeIdx)
+            array.remove(tradeTP2s, removeIdx)
+            array.remove(tradeActive, removeIdx)
+            array.remove(tradeStopMoved, removeIdx)
+
+export updateActiveTradeLifecycle(float currentTradeStopStored, float currentTradeEntryStored, int[] tradeDirs, float[] tradeStops, float[] tradeBEs, float[] tradeR1s, float[] tradeR2s, float[] tradeTP1s, float[] tradeTP2s, bool[] tradeActive, bool[] tradeStopMoved,
+     line[] tradeEntryLines, line[] tradeStopLines, line[] tradeBeLines, line[] tradeR1Lines, line[] tradeR2Lines, line[] tradeTp1Lines, line[] tradeTp2Lines,
+     label[] tradeEntryLabels, label[] tradeStopLabels, label[] tradeBeLabels, label[] tradeR1Labels, label[] tradeR2Labels, label[] tradeTp1Labels, label[] tradeTp2Labels,
+     string beTriggerMode, string tp1TargetMode, string tp2TargetMode, string endTradeLevel, bool keepEndedTradeLevels) =>
+    float outCurrentStop = currentTradeStopStored
+    bool trackedTradeActive = false
+    int tradeCount = array.size(tradeActive)
+    if tradeCount > 0
+        for activeTradeIdx = 0 to tradeCount - 1
+            if not array.get(tradeActive, activeTradeIdx)
+                continue
+            bool hasVisualRow = array.size(tradeEntryLines) > activeTradeIdx and array.size(tradeStopLines) > activeTradeIdx and array.size(tradeBeLines) > activeTradeIdx and
+                 array.size(tradeR1Lines) > activeTradeIdx and array.size(tradeR2Lines) > activeTradeIdx and array.size(tradeTp1Lines) > activeTradeIdx and array.size(tradeTp2Lines) > activeTradeIdx and
+                 array.size(tradeEntryLabels) > activeTradeIdx and array.size(tradeStopLabels) > activeTradeIdx and array.size(tradeBeLabels) > activeTradeIdx and
+                 array.size(tradeR1Labels) > activeTradeIdx and array.size(tradeR2Labels) > activeTradeIdx and array.size(tradeTp1Labels) > activeTradeIdx and array.size(tradeTp2Labels) > activeTradeIdx
+            if not hasVisualRow
+                array.set(tradeActive, activeTradeIdx, false)
+                continue
+            int tDir = array.get(tradeDirs, activeTradeIdx)
+            float tStop = array.get(tradeStops, activeTradeIdx)
+            float tBe = array.get(tradeBEs, activeTradeIdx)
+            float tR1 = array.get(tradeR1s, activeTradeIdx)
+            float tR2 = array.get(tradeR2s, activeTradeIdx)
+            float tTp1 = array.get(tradeTP1s, activeTradeIdx)
+            float tTp2 = array.get(tradeTP2s, activeTradeIdx)
+            line activeEntryLine = array.get(tradeEntryLines, activeTradeIdx)
+            float tEntry = not na(activeEntryLine) ? line.get_y1(activeEntryLine) : na
+            bool movedToBe = array.get(tradeStopMoved, activeTradeIdx)
+            line slLn = array.get(tradeStopLines, activeTradeIdx)
+            label slLb = array.get(tradeStopLabels, activeTradeIdx)
+            float beTriggerLevel = tBe
+            bool hitBeTrigger = tDir == 1 ? (not na(beTriggerLevel) and high >= beTriggerLevel) : (not na(beTriggerLevel) and low <= beTriggerLevel)
+            if not movedToBe and hitBeTrigger and not na(tEntry)
+                movedToBe := true
+                tStop := tEntry
+                array.set(tradeStopMoved, activeTradeIdx, true)
+                array.set(tradeStops, activeTradeIdx, tStop)
+            if movedToBe
+                if not na(slLn)
+                    line.delete(slLn)
+                    array.set(tradeStopLines, activeTradeIdx, na)
+                if not na(slLb)
+                    label.delete(slLb)
+                    array.set(tradeStopLabels, activeTradeIdx, na)
+            bool stopBrokenClose = tDir == 1 ? close < tStop : close > tStop
+            float endTarget = endTradeLevel == "1R" ? tR1 : endTradeLevel == "2R" ? tR2 : endTradeLevel == "TP1" ? tTp1 : tTp2
+            bool endTargetHit = tDir == 1 ? (not na(endTarget) and high >= endTarget) : (not na(endTarget) and low <= endTarget)
+            bool tradeDone = stopBrokenClose or endTargetHit
+            int endX = tradeDone ? bar_index : bar_index + 5
+            bool beSharesR1 = (beTriggerMode == "1R") or (not na(tBe) and not na(tR1) and tBe == tR1)
+            bool tp1SharesR1 = (tp1TargetMode == "1R") or (not na(tTp1) and not na(tR1) and tTp1 == tR1)
+            bool tp2SharesR2 = (tp2TargetMode == "2R") or (not na(tTp2) and not na(tR2) and tTp2 == tR2)
+            string r1Title = "1R" + (beSharesR1 ? " / BE" : "") + (tp1SharesR1 ? " / TP1" : "")
+            string r2Title = "2R" + (tp2SharesR2 ? " / TP2" : "")
+            string beTitle = beSharesR1 ? r1Title : "BE"
+            string tp1Title = tp1SharesR1 ? r1Title : "TP1"
+            string tp2Title = tp2SharesR2 ? r2Title : "TP2"
+            string entryTitle = movedToBe ? "Entry/SL" : "Entry"
+            updateTradeLevelVisual(activeEntryLine, array.get(tradeEntryLabels, activeTradeIdx), tEntry, entryTitle, endX)
+            updateTradeLevelVisual(array.get(tradeStopLines, activeTradeIdx), array.get(tradeStopLabels, activeTradeIdx), tStop, "SL", endX)
+            updateTradeLevelVisual(array.get(tradeBeLines, activeTradeIdx), array.get(tradeBeLabels, activeTradeIdx), tBe, beTitle, endX)
+            updateTradeLevelVisual(array.get(tradeR1Lines, activeTradeIdx), array.get(tradeR1Labels, activeTradeIdx), tR1, r1Title, endX)
+            updateTradeLevelVisual(array.get(tradeR2Lines, activeTradeIdx), array.get(tradeR2Labels, activeTradeIdx), tR2, r2Title, endX)
+            updateTradeLevelVisual(array.get(tradeTp1Lines, activeTradeIdx), array.get(tradeTp1Labels, activeTradeIdx), tTp1, tp1Title, endX)
+            updateTradeLevelVisual(array.get(tradeTp2Lines, activeTradeIdx), array.get(tradeTp2Labels, activeTradeIdx), tTp2, tp2Title, endX)
+            bool isTrackedTrade = not na(currentTradeEntryStored) and not na(tEntry) and tEntry == currentTradeEntryStored
+            if tradeDone
+                array.set(tradeActive, activeTradeIdx, false)
+                if not keepEndedTradeLevels
+                    deleteTradeVisualRow(activeTradeIdx, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR1Lines, tradeR2Lines, tradeTp1Lines, tradeTp2Lines,
+                         tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR1Labels, tradeR2Labels, tradeTp1Labels, tradeTp2Labels)
+            else if isTrackedTrade
+                trackedTradeActive := true
+                outCurrentStop := tStop
+    [outCurrentStop, trackedTradeActive]
+
+export processTradeEvent(bool bullEntryTrade, float bullEntryPrice, float bearEntryPrice, int bullMitOriginIdx, int bearMitOriginIdx,
+     int enabledEntryFilterCount, int bullPassFilterCount, int bearPassFilterCount, int[] msZZDir, float[] msZZY, int[] msZZX, bool[] liqIsHighs, float[] liqPrices, int[] liqStartBars, int[] liqSweeps,
+     bool useMergeBands, float reqThresholdTicks, float minTick,
+     bool showEntryLevel, bool showStopLevel, bool showBeLevel, bool showR1Level, bool showR2Level, bool showTp1Level, bool showTp2Level,
+     bool showEntryPriceLabel, bool showStopPriceLabel, bool showBePriceLabel, bool showR1PriceLabel, bool showR2PriceLabel, bool showTp1PriceLabel, bool showTp2PriceLabel,
+     color entryLineColor, color stopLineColor, color beLineColor, color r1LineColor, color r2LineColor, color tp1LineColor, color tp2LineColor,
+     string beTargetMode, string tp1TargetMode, string tp2TargetMode,
+     line[] tradeEntryLines, line[] tradeStopLines, line[] tradeBeLines, line[] tradeR1Lines, line[] tradeR2Lines, line[] tradeTp1Lines, line[] tradeTp2Lines,
+     label[] tradeEntryLabels, label[] tradeStopLabels, label[] tradeBeLabels, label[] tradeR1Labels, label[] tradeR2Labels, label[] tradeTp1Labels, label[] tradeTp2Labels,
+     int[] tradeDirs, float[] tradeStops, float[] tradeBEs, float[] tradeR1s, float[] tradeR2s, float[] tradeTP1s, float[] tradeTP2s, bool[] tradeActive, bool[] tradeStopMoved,
+     bool keepActiveTrades, int activeTradeCap, bool keepEndedTradeLevels) =>
+    int activeCount = 0
+    int tradeCountBefore = array.size(tradeActive)
+    if tradeCountBefore > 0
+        for i = 0 to tradeCountBefore - 1
+            if array.get(tradeActive, i)
+                activeCount += 1
+    int forcedCloseCount = 0
+    if not keepActiveTrades
+        forcedCloseCount := activeCount
+    else if activeTradeCap > 0 and activeCount >= activeTradeCap
+        forcedCloseCount := activeCount - activeTradeCap + 1
+    if forcedCloseCount > 0 and tradeCountBefore > 0
+        for closeN = 0 to forcedCloseCount - 1
+            int closeIdx = na
+            for i = 0 to array.size(tradeActive) - 1
+                if array.get(tradeActive, i)
+                    closeIdx := i
+                    break
+            if na(closeIdx)
+                break
+            endTradeVisualRow(closeIdx, bar_index, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR1Lines, tradeR2Lines, tradeTp1Lines, tradeTp2Lines,
+                 tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR1Labels, tradeR2Labels, tradeTp1Labels, tradeTp2Labels)
+            array.set(tradeActive, closeIdx, false)
+            if not keepEndedTradeLevels
+                deleteTradeVisualRow(closeIdx, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR1Lines, tradeR2Lines, tradeTp1Lines, tradeTp2Lines,
+                     tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR1Labels, tradeR2Labels, tradeTp1Labels, tradeTp2Labels)
+    int tradeDir = bullEntryTrade ? 1 : -1
+    float entryLevel = bullEntryTrade ? bullEntryPrice : bearEntryPrice
+    int originBar = bullEntryTrade ? bullMitOriginIdx : bearMitOriginIdx
+    float mitigationWindowStop = mitigationStopFromWindow(tradeDir, originBar)
+    float formationStop = originFormationStop(tradeDir, originBar)
+    float stopPlacementWindow = na(mitigationWindowStop) ? formationStop : na(formationStop) ? mitigationWindowStop : tradeDir == 1 ? math.min(mitigationWindowStop, formationStop) : math.max(mitigationWindowStop, formationStop)
+    [stopLevel, liq1Level, liq2Level, liq3Level] = computeTradeTargets(tradeDir, entryLevel, originBar, msZZDir, msZZY, msZZX, liqIsHighs, liqPrices, liqStartBars, liqSweeps, useMergeBands, reqThresholdTicks, minTick)
+    stopLevel := not na(stopPlacementWindow) ? stopPlacementWindow : stopLevel
+    float riskR = tradeDir == 1 ? entryLevel - stopLevel : stopLevel - entryLevel
+    float r1Level = na
+    float r2Level = na
+    float beLevel = na
+    float tp1Level = na
+    float tp2Level = na
+    if not na(riskR) and riskR > 0
+        r1Level := tradeDir == 1 ? entryLevel + riskR : entryLevel - riskR
+        r2Level := tradeDir == 1 ? entryLevel + (riskR * 2.0) : entryLevel - (riskR * 2.0)
+    int beRawNth = 1
+    float beLiquidityLevel = liq1Level
+    if beTargetMode == "Liquidity 1" and not na(riskR) and riskR > 0
+        float minBeMove = riskR * 0.5
+        [beLiquidityLevelTmp, beRawNthTmp] = findDirectionalLiquidityWithMinMove(entryLevel, tradeDir, 1, minBeMove, useMergeBands, reqThresholdTicks, minTick, liqPrices, liqSweeps)
+        beLiquidityLevel := beLiquidityLevelTmp
+        beRawNth := not na(beRawNthTmp) ? beRawNthTmp : 1
+    float tp1LiquidityLevel = findNthDirectionalLiquidity(entryLevel, tradeDir, beTargetMode == "Liquidity 1" ? beRawNth + 1 : 2, useMergeBands, reqThresholdTicks, minTick, liqPrices, liqSweeps)
+    float tp2LiquidityLevel = findNthDirectionalLiquidity(entryLevel, tradeDir, beTargetMode == "Liquidity 1" ? beRawNth + 2 : 3, useMergeBands, reqThresholdTicks, minTick, liqPrices, liqSweeps)
+    bool beLiquidityMode = beTargetMode == "Liquidity 1"
+    bool tp1LiquidityMode = tp1TargetMode == "Liquidity 2"
+    bool tp2LiquidityMode = tp2TargetMode == "Liquidity 3"
+    beLevel := beLiquidityMode ? beLiquidityLevel : r1Level
+    tp1Level := tp1LiquidityMode ? tp1LiquidityLevel : r1Level
+    tp2Level := tp2LiquidityMode ? tp2LiquidityLevel : r2Level
+    if beLiquidityMode and na(beLevel)
+        beLevel := r1Level
+    if tp1LiquidityMode and na(tp1Level)
+        tp1Level := r1Level
+    if tp2LiquidityMode and na(tp2Level)
+        tp2Level := r2Level
+    if not na(beLevel) and not na(tp1Level)
+        if tradeDir == 1 and tp1Level < beLevel
+            tp1Level := beLevel
+        if tradeDir == -1 and tp1Level > beLevel
+            tp1Level := beLevel
+    if not na(tp1Level) and not na(tp2Level)
+        if tradeDir == 1 and tp2Level < tp1Level
+            tp2Level := tp1Level
+        if tradeDir == -1 and tp2Level > tp1Level
+            tp2Level := tp1Level
+    bool beSharesR1 = not na(beLevel) and not na(r1Level) and beLevel == r1Level
+    bool tp1SharesR1 = not na(tp1Level) and not na(r1Level) and tp1Level == r1Level
+    bool tp2SharesR2 = not na(tp2Level) and not na(r2Level) and tp2Level == r2Level
+    bool showBeVisual = showBeLevel and not beSharesR1
+    bool showTp1Visual = showTp1Level and not tp1SharesR1
+    bool showTp2Visual = showTp2Level and not tp2SharesR2
+    bool showBeLabelVisual = showBePriceLabel and not beSharesR1
+    bool showTp1LabelVisual = showTp1PriceLabel and not tp1SharesR1
+    bool showTp2LabelVisual = showTp2PriceLabel and not tp2SharesR2
+    string r1Title = "1R" + (beSharesR1 ? " / BE" : "") + (tp1SharesR1 ? " / TP1" : "")
+    string r2Title = "2R" + (tp2SharesR2 ? " / TP2" : "")
+    string beTitle = beSharesR1 ? r1Title : "BE"
+    string tp1Title = tp1SharesR1 ? r1Title : "TP1"
+    string tp2Title = tp2SharesR2 ? r2Title : "TP2"
+    float outRating = enabledEntryFilterCount > 0 ? (bullEntryTrade ? bullPassFilterCount : bearPassFilterCount) * 100.0 / enabledEntryFilterCount : 100.0
+    appendTradeVisuals(bar_index, entryLevel, stopLevel, beLevel, r1Level, r2Level, tp1Level, tp2Level,
+         beTitle, r1Title, r2Title, tp1Title, tp2Title,
+         showEntryLevel, showStopLevel, showBeVisual, showR1Level, showR2Level, showTp1Visual, showTp2Visual,
+         showEntryPriceLabel, showStopPriceLabel, showBeLabelVisual, showR1PriceLabel, showR2PriceLabel, showTp1LabelVisual, showTp2LabelVisual,
+         entryLineColor, stopLineColor, beLineColor, r1LineColor, r2LineColor, tp1LineColor, tp2LineColor,
+         tradeEntryLines, tradeStopLines, tradeBeLines, tradeR1Lines, tradeR2Lines, tradeTp1Lines, tradeTp2Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR1Labels, tradeR2Labels, tradeTp1Labels, tradeTp2Labels)
+    pushTradeState(tradeDir, stopLevel, beLevel, r1Level, r2Level, tp1Level, tp2Level, tradeDirs, tradeStops, tradeBEs, tradeR1s, tradeR2s, tradeTP1s, tradeTP2s, tradeActive, tradeStopMoved)
+    [tradeDir, outRating, entryLevel, stopLevel, beLevel, r1Level, r2Level, tp1Level, tp2Level]
