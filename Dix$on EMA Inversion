@@ -71,9 +71,7 @@ emaTouchType = input.string("Either", "EMA Touch Type", options=["Wick Touch", "
 //━━━━━━━━━━━━━━━━━━━━
 // Entry Visuals
 //━━━━━━━━━━━━━━━━━━━━
-bullEntryColor = input.color(color.new(color.aqua, 0), "Bull Entry Color", inline="ENTRY_1", group=GROUP_ENTRY, tooltip="Entry label style controls: bullish/bearish colors and text size.", display=display.none)
-bearEntryColor = input.color(color.new(color.orange, 0), "Bear Entry Color", inline="ENTRY_1", group=GROUP_ENTRY, display=display.none)
-entryLabelSizeInput = input.string("Tiny", "Entry Label Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], inline="ENTRY_1", group=GROUP_ENTRY, display=display.none)
+entryLabelSizeInput = input.string("Tiny", "Entry Label Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], inline="ENTRY_1", group=GROUP_ENTRY, tooltip="Entry label text size.", display=display.none)
 
 entryMarkerOffsetAtrMult = input.float(0.2, "Marker Offset ATR", minval=0.0, step=0.05, inline="ENTRY_2", group=GROUP_ENTRY, tooltip="Vertical entry marker offset in ATR multiples to keep labels clear from candle bodies/wicks.", display=display.none)
 
