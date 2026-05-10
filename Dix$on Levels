@@ -1,0 +1,2010 @@
+//@version=6 v1
+indicator("Dix$on Levels", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500, max_bars_back=1200)
+
+groupM  = "------------------------ Master Toggles ------------------------"
+
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// === DTR DEVIATIONS (Daily anchor) â€” seed Â±3 at open, grow with price ===
+//     Auto step = (Multiplier Ã— ATR). Rungs persist once created.
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+groupATRD        = "------------ Dix$on True Range Deviations ------------"
+
+// Master enable
+enableATRD       = input.bool( true, "Enable Dix$on True Range Deviations", group=groupM, display=display.none, tooltip="Turn Dix$on True Range (ATR-based) deviation ladders on/off." )
+
+// Lookback
+// NOTE: When set to 1, ONLY the current day will be shown (no archived days kept).
+atrdLookbackDays = input.int( 1, "DTR Session Lookback", minval=1, maxval=100, group=groupATRD, display=display.none, tooltip="How many days of DTR to keep visible (includes today)." )
+
+// ATR config
+atrdLen          = input.int( 14, "DTR Length (Daily)", minval=1, group=groupATRD, display=display.none, tooltip="DTR period used for spacing the DTR ladder." )
+atrdBaseTF       = input.timeframe( "D", "DTR Anchor Timeframe", group=groupATRD, display=display.none, tooltip="Timeframe used to compute DTR (intraday uses a predictive daily ATR).")
+
+// Adjustable multiplier (UI as percent: 38.0 = 0.38x)
+atrdStepMult     = input.float( 37.5, "DTR Step Multiplier", minval=1.0, step=1.0, group=groupATRD, display=display.none, tooltip="Spacing between rungs = DTR Ã— (this % / 100). Example: 38.0 = 0.38Ã— ATR." )
+
+// Line styling
+atrdExtendStr    = input.string( "Both", "Line Extend", options=["None","Left","Right","Both"], group=groupATRD, display=display.none, tooltip="How lines extend beyond their endpoints." )
+atrdLineWidth    = input.int( 1, "Line Width", minval=1, maxval=5, group=groupATRD, display=display.none, tooltip="Stroke width for all DTR lines.")
+atrdLineStyleStr = input.string( "Dashed", "Line Style", options=["Solid","Dashed","Dotted"], group=groupATRD, display=display.none, tooltip="Stroke style for all DTR lines." )
+
+// Colors & labels
+atrdColorZero    = input.color( color.new(color.yellow, 40), "Dev 0 Color", group=groupATRD, display=display.none, tooltip="Color of the DTR centerline (Dev 0)." )
+atrdColorUp      = input.color( color.new(color.yellow, 40), "Up Deviation Color", group=groupATRD, display=display.none, tooltip="Color of the positive (+) deviation lines." )
+atrdColorDn      = input.color( color.new(color.yellow, 40), "Down Deviation Color", group=groupATRD, display=display.none, tooltip="Color of the negative (âˆ’) deviation lines.")
+atrdShowLabels   = input.bool( true, "Show Deviation Labels", group=groupATRD, display=display.none, tooltip="Toggle price labels for Dev 0 and each deviation rung.")
+atrdLabelSizeStr = input.string( "Tiny", "Label Size", options=["Tiny","Small","Normal","Large","Huge"], group=groupATRD, display=display.none, tooltip="Font size for DTR labels." )
+
+// Enums
+atrdExtend = atrdExtendStr == "Left"  ? extend.left  :
+             atrdExtendStr == "Right" ? extend.right :
+             atrdExtendStr == "Both"  ? extend.both  : extend.none
+atrdStyle  = atrdLineStyleStr == "Solid" ? line.style_solid :
+             atrdLineStyleStr == "Dashed"? line.style_dashed : line.style_dotted
+
+// â”€â”€ Helper: choose label style based on extend
+f_atrd_lbl_style(_ext) =>
+    (_ext == extend.right or _ext == extend.both) ? label.style_none : label.style_label_left
+
+// Day & ATR (lookahead_on so today's ATR is available intraday as a prediction)
+isNewDay_ATRD = ta.change(time("D")) != 0
+float atrdATR = request.security(syminfo.tickerid, atrdBaseTF, ta.atr(atrdLen), lookahead=barmerge.lookahead_on)
+
+// â”€â”€ DTR step with tick guard (uses adjustable multiplier) + HARD GUARD
+float __rawStep = atrdATR * (atrdStepMult * 0.01)   // <-- percent UI (38.0 -> 0.38)
+float atrdStep  = math.max(syminfo.mintick, __rawStep)
+atrdStep := na(atrdStep) or atrdStep <= 0 ? syminfo.mintick : atrdStep  // <-- guard against na/0
+
+// IDs
+atrdDayId = year(time) * 10000 + month(time) * 100 + dayofmonth(time)
+
+// Containers (current day)
+var float atrdDayOpen = na
+var line  atrdZeroLn  = na
+var label atrdZeroLab = na
+
+type _atrd_targ
+    line ln
+    label lab
+
+var _atrd_targ[] atrdUpTargs = array.new<_atrd_targ>()   // +1, +2, â€¦
+var _atrd_targ[] atrdDnTargs = array.new<_atrd_targ>()   // -1, -2, â€¦
+var int atrdUpCount = 0
+var int atrdDnCount = 0
+var int atrdCurDaySid = na
+
+// History (keyed per day so trimming is exact)
+var int   __atrdCounter    = 0
+var int[] __atrdDayKeys    = array.new_int()     // archived day ids kept (EXCLUDES current day)
+var line[] __atrdZeroLines = array.new_line()    // archived Dev0 lines
+var int[]  __atrdZeroKeys  = array.new_int()     // day key for each archived Dev0 line
+var line[] __atrdUpLines   = array.new_line()
+var int[]  __atrdUpKeys    = array.new_int()
+var line[] __atrdDnLines   = array.new_line()
+var int[]  __atrdDnKeys    = array.new_int()
+
+// Label helper
+f_size_atrd(s) => s=="Tiny"?size.tiny:s=="Small"?size.small:s=="Normal"?size.normal:s=="Large"?size.large:size.huge
+f_atrd_lbl(_sign, _idx, _price) =>
+    _sign == 0 ? "DTR 0 / $" + str.tostring(_price, format.mintick)
+               : "DTR " + (_sign > 0 ? "+" : "-") + str.tostring(_idx) + " / $" + str.tostring(_price, format.mintick)
+
+// Seed exactly Â±3 levels each new day
+const int ATRD_SEED = 3
+
+// ============= Day change: archive prior day, seed new day =============
+if enableATRD and isNewDay_ATRD
+    int prevKey = nz(atrdDayId[1], atrdDayId)
+    int maxArchivedDays = math.max(0, atrdLookbackDays - 1)
+
+    // Archive zero line + delete prior zero label
+    if not na(atrdZeroLn)
+        line.set_x2(atrdZeroLn, bar_index - 1)
+        if maxArchivedDays > 0
+            array.push(__atrdZeroLines, atrdZeroLn), array.push(__atrdZeroKeys, prevKey)
+        else
+            line.delete(atrdZeroLn)
+        atrdZeroLn := na
+    if not na(atrdZeroLab)
+        label.delete(atrdZeroLab)
+        atrdZeroLab := na
+
+    // Archive up deviations
+    int _upN = array.size(atrdUpTargs)
+    if _upN > 0
+        for i = 0 to _upN - 1
+            _atrd_targ t = array.get(atrdUpTargs, i)
+            if not na(t.ln)
+                line.set_x2(t.ln, bar_index - 1)
+                if maxArchivedDays > 0
+                    array.push(__atrdUpLines, t.ln), array.push(__atrdUpKeys, prevKey)
+                else
+                    line.delete(t.ln)
+            if not na(t.lab)
+                label.delete(t.lab)
+
+    // Archive down deviations
+    int _dnN = array.size(atrdDnTargs)
+    if _dnN > 0
+        for i = 0 to _dnN - 1
+            _atrd_targ t = array.get(atrdDnTargs, i)
+            if not na(t.ln)
+                line.set_x2(t.ln, bar_index - 1)
+                if maxArchivedDays > 0
+                    array.push(__atrdDnLines, t.ln), array.push(__atrdDnKeys, prevKey)
+                else
+                    line.delete(t.ln)
+            if not na(t.lab)
+                label.delete(t.lab)
+
+    // Clear live containers
+    array.clear(atrdUpTargs)
+    array.clear(atrdDnTargs)
+    atrdUpCount := 0
+    atrdDnCount := 0
+
+    // Queue yesterday only if we actually keep archived days
+    if maxArchivedDays > 0
+        array.push(__atrdDayKeys, prevKey)
+
+        // Trim history to the most recent maxArchivedDays (hard cap)
+        if array.size(__atrdDayKeys) > maxArchivedDays
+            int toRemove = array.size(__atrdDayKeys) - maxArchivedDays
+            for _ = 1 to toRemove
+                int removedKey = array.shift(__atrdDayKeys)
+
+                // delete archived zero lines with that key
+                int i0 = 0
+                while i0 < array.size(__atrdZeroKeys)
+                    if array.get(__atrdZeroKeys, i0) == removedKey
+                        line z = array.get(__atrdZeroLines, i0)
+                        if not na(z)
+                            line.delete(z)
+                        array.remove(__atrdZeroLines, i0)
+                        array.remove(__atrdZeroKeys,  i0)
+                    else
+                        i0 += 1
+
+                // delete archived up lines with that key
+                int iu = 0
+                while iu < array.size(__atrdUpKeys)
+                    if array.get(__atrdUpKeys, iu) == removedKey
+                        line lnU = array.get(__atrdUpLines, iu)
+                        if not na(lnU)
+                            line.delete(lnU)
+                        array.remove(__atrdUpLines, iu)
+                        array.remove(__atrdUpKeys,  iu)
+                    else
+                        iu += 1
+
+                // delete archived down lines with that key
+                int id = 0
+                while id < array.size(__atrdDnKeys)
+                    if array.get(__atrdDnKeys, id) == removedKey
+                        line lnD = array.get(__atrdDnLines, id)
+                        if not na(lnD)
+                            line.delete(lnD)
+                        array.remove(__atrdDnLines, id)
+                        array.remove(__atrdDnKeys,  id)
+                    else
+                        id += 1
+
+    // Start new day from first bar open
+    atrdDayOpen  := open
+    __atrdCounter += 1
+    atrdCurDaySid := __atrdCounter
+
+    // Chosen label style based on current extend
+    lblStyleNow = f_atrd_lbl_style(atrdExtend)
+
+    // Dev 0 line + label (create as real segment, then set extend â†’ avoids vertical flash)
+    atrdZeroLn := line.new( bar_index - 1, atrdDayOpen, bar_index,     atrdDayOpen, color=atrdColorZero, width=atrdLineWidth, style=atrdStyle, extend=extend.none)
+    line.set_extend(atrdZeroLn, atrdExtend)
+
+    if atrdShowLabels
+        atrdZeroLab := label.new(bar_index, atrdDayOpen, f_atrd_lbl(0, 0, atrdDayOpen),
+                                 style=lblStyleNow, yloc=yloc.price, size=f_size_atrd(atrdLabelSizeStr),
+                                 color=color.new(color.black, 100), textcolor=color.new(color.white, 0))
+    else
+        atrdZeroLab := na
+
+    // Seed EXACTLY +1..+3 and -1..-3
+    for k = 1 to ATRD_SEED
+        float yu = atrdDayOpen + atrdStep * k
+        float yd = atrdDayOpen - atrdStep * k
+
+        if not na(yu)
+            // create horizontal segment first, then set extend (prevents vertical artifact)
+            line lnu = line.new( bar_index - 1, yu, bar_index,     yu, color=atrdColorUp, width=atrdLineWidth, style=atrdStyle, extend=extend.none)
+            line.set_extend(lnu, atrdExtend)
+            label lbu = na
+            if atrdShowLabels
+                lbu := label.new(bar_index, yu, f_atrd_lbl(+1, k, yu), style=lblStyleNow, yloc=yloc.price, size=f_size_atrd(atrdLabelSizeStr),
+                                 color=color.new(color.black, 100), textcolor=color.new(atrdColorUp, 0))
+            array.push(atrdUpTargs, _atrd_targ.new(lnu, lbu))
+
+        if not na(yd)
+            line lnd = line.new( bar_index - 1, yd, bar_index,     yd, color=atrdColorDn, width=atrdLineWidth, style=atrdStyle, extend=extend.none)
+            line.set_extend(lnd, atrdExtend)
+            label lbd = na
+            if atrdShowLabels
+                lbd := label.new(bar_index, yd, f_atrd_lbl(-1, k, yd), style=lblStyleNow, yloc=yloc.price, size=f_size_atrd(atrdLabelSizeStr),
+                                 color=color.new(color.black, 100), textcolor=color.new(atrdColorDn, 0))
+            array.push(atrdDnTargs, _atrd_targ.new(lnd, lbd))
+
+    atrdUpCount := array.size(atrdUpTargs)
+    atrdDnCount := array.size(atrdDnTargs)
+
+// ================= Intraday maintenance: Rungs PERSIST once created =================
+if enableATRD and not isNewDay_ATRD and not na(atrdDayOpen)
+    // Keep endpoints fresh & obey styling
+    if not na(atrdZeroLn)
+        line.set_x2(atrdZeroLn, bar_index)
+        line.set_extend(atrdZeroLn, atrdExtend)
+        line.set_style(atrdZeroLn, atrdStyle)
+        line.set_width(atrdZeroLn, atrdLineWidth)
+        line.set_color(atrdZeroLn, atrdColorZero)
+
+    // Move Dev 0 label to the far/right end (or hide if toggled off)
+    if atrdShowLabels
+        if not na(atrdZeroLab)
+            label.set_x(atrdZeroLab, bar_index)
+        else
+            // recreate if user toggled labels back on
+            atrdZeroLab := label.new(bar_index, atrdDayOpen, f_atrd_lbl(0, 0, atrdDayOpen),
+                                     style=f_atrd_lbl_style(atrdExtend), yloc=yloc.price, size=f_size_atrd(atrdLabelSizeStr),
+                                     color=color.new(color.black, 100), textcolor=color.new(color.white, 0))
+    else
+        if not na(atrdZeroLab)
+            label.delete(atrdZeroLab)
+            atrdZeroLab := na
+
+    // Maintain all existing up/down lines & labels (NO HIDING ON PULLBACK)
+    for i = 0 to array.size(atrdUpTargs) - 1
+        _atrd_targ t = array.get(atrdUpTargs, i)
+        if not na(t.ln)
+            line.set_x2(t.ln, bar_index)
+            line.set_style(t.ln, atrdStyle)
+            line.set_width(t.ln, atrdLineWidth)
+            line.set_color(t.ln, atrdColorUp)
+            line.set_extend(t.ln, atrdExtend)
+        if atrdShowLabels
+            if na(t.lab)
+                // recreate missing label if labels were toggled back on
+                float y = line.get_price(t.ln, bar_index)
+                t.lab := label.new(bar_index, y, f_atrd_lbl(+1, i+1, y), style=f_atrd_lbl_style(atrdExtend),
+                                   yloc=yloc.price, size=f_size_atrd(atrdLabelSizeStr),
+                                   color=color.new(color.black, 100), textcolor=color.new(atrdColorUp, 0))
+                array.set(atrdUpTargs, i, t)
+            else
+                label.set_x(t.lab, bar_index)
+        else
+            if not na(t.lab)
+                label.delete(t.lab)
+                t.lab := na
+                array.set(atrdUpTargs, i, t)
+
+    for i = 0 to array.size(atrdDnTargs) - 1
+        _atrd_targ t = array.get(atrdDnTargs, i)
+        if not na(t.ln)
+            line.set_x2(t.ln, bar_index)
+            line.set_style(t.ln, atrdStyle)
+            line.set_width(t.ln, atrdLineWidth)
+            line.set_color(t.ln, atrdColorDn)
+            line.set_extend(t.ln, atrdExtend)
+        if atrdShowLabels
+            if na(t.lab)
+                float y = line.get_price(t.ln, bar_index)
+                t.lab := label.new(bar_index, y, f_atrd_lbl(-1, i+1, y), style=f_atrd_lbl_style(atrdExtend),
+                                   yloc=yloc.price, size=f_size_atrd(atrdLabelSizeStr),
+                                   color=color.new(color.black, 100), textcolor=color.new(atrdColorDn, 0))
+                array.set(atrdDnTargs, i, t)
+            else
+                label.set_x(t.lab, bar_index)
+        else
+            if not na(t.lab)
+                label.delete(t.lab)
+                t.lab := na
+                array.set(atrdDnTargs, i, t)
+
+    // Grow ladders as needed based on current price location (new rungs persist)
+    float posUpRaw = (close - atrdDayOpen) / atrdStep
+    float posDnRaw = (atrdDayOpen - close) / atrdStep
+    int   curUpIdx = math.max(0, int(math.floor(posUpRaw)))  // 0,1,2,â€¦
+    int   curDnIdx = math.max(0, int(math.floor(posDnRaw)))  // 0,1,2,â€¦
+    int   wantUpTop = math.max(ATRD_SEED, curUpIdx + 3)
+    int   wantDnTop = math.max(ATRD_SEED, curDnIdx + 3)
+
+    lblStyleNowIntraday = f_atrd_lbl_style(atrdExtend)
+
+    if wantUpTop > atrdUpCount
+        for k = atrdUpCount + 1 to wantUpTop
+            float y = atrdDayOpen + atrdStep * k
+            if not na(y)
+                // create horizontal segment first, then set extend
+                line l  = line.new( bar_index - 1, y, bar_index,     y, color=atrdColorUp, width=atrdLineWidth, style=atrdStyle, extend=extend.none)
+                line.set_extend(l, atrdExtend)
+                label lb = na
+                if atrdShowLabels
+                    lb := label.new(bar_index, y, f_atrd_lbl(+1, k, y), style=lblStyleNowIntraday, yloc=yloc.price, size=f_size_atrd(atrdLabelSizeStr), color=color.new(color.black, 100), textcolor=color.new(atrdColorUp, 0))
+                array.push(atrdUpTargs, _atrd_targ.new(l, lb))
+        atrdUpCount := array.size(atrdUpTargs)
+
+    if wantDnTop > atrdDnCount
+        for k = atrdDnCount + 1 to wantDnTop
+            float y = atrdDayOpen - atrdStep * k
+            if not na(y)
+                // create horizontal segment first, then set extend
+                line l  = line.new( bar_index - 1, y, bar_index,     y, color=atrdColorDn, width=atrdLineWidth, style=atrdStyle, extend=extend.none)
+                line.set_extend(l, atrdExtend)
+                label lb = na
+                if atrdShowLabels
+                    lb := label.new(bar_index, y, f_atrd_lbl(-1, k, y), style=lblStyleNowIntraday, yloc=yloc.price, size=f_size_atrd(atrdLabelSizeStr), color=color.new(color.black, 100), textcolor=color.new(atrdColorDn, 0))
+                array.push(atrdDnTargs, _atrd_targ.new(l, lb))
+        atrdDnCount := array.size(atrdDnTargs)
+
+// â”€â”€ Centerlines (Dev-0) for lookback: show exactly atrdLookbackDays total (current + last N-1 archived)
+if enableATRD
+    int haveZ = array.size(__atrdZeroLines)
+    int needArchived = math.max(0, atrdLookbackDays - 1)
+    if haveZ > 0
+        int startIdx = math.max(0, haveZ - needArchived)
+        for i = 0 to haveZ - 1
+            line z = array.get(__atrdZeroLines, i)
+            if not na(z)
+                bool within = i >= startIdx
+                // Keep their per-day span; just restyle and fade extras if any
+                line.set_extend(z, atrdExtend)
+                line.set_style(z, atrdStyle)
+                line.set_width(z, atrdLineWidth)
+                line.set_color(z, within ? atrdColorZero : color.new(atrdColorZero, 100))
+
+// Disable â†’ clean live (history thatâ€™s already archived remains)
+if not enableATRD
+    if not na(atrdZeroLn)
+        line.delete(atrdZeroLn)
+        atrdZeroLn := na
+    if not na(atrdZeroLab)
+        label.delete(atrdZeroLab)
+        atrdZeroLab := na
+
+    if array.size(atrdUpTargs) > 0
+        for t in atrdUpTargs
+            if not na(t.ln)
+                line.delete(t.ln)
+            if not na(t.lab)
+                label.delete(t.lab)
+        array.clear(atrdUpTargs)
+
+    if array.size(atrdDnTargs) > 0
+        for t in atrdDnTargs
+            if not na(t.ln)
+                line.delete(t.ln)
+            if not na(t.lab)
+                label.delete(t.lab)
+        array.clear(atrdDnTargs)
+
+    atrdUpCount := 0
+    atrdDnCount := 0
+
+
+
+
+
+
+//@version=6
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// === DIX$ON OPENING RANGE (DORD) â€” unified inputs (with ATR scope fix) ===
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+groupDORD  = "------------ Dix$on Opening Range Deviations ------------"
+enableDORD = input.bool(true, "Enable Dix$on Opening Range Deviations", group=groupM, tooltip="Master on/off for the Dix$on Opening Range Deviations feature set.", display=display.none)
+
+// DORD session/timeframe & lookback (same group)
+dord_tf             = input.timeframe("15", "Opening Range Session Timeframe", group=groupDORD, tooltip="Timeframe used to define DORD sessions", display=display.none)
+dordSessionLookback = input.int(1, "Opening Range Session Lookback", minval=1, maxval=100, group=groupDORD, tooltip="How many previous DORD sessions to keep objects for", display=display.none)
+
+// â”€â”€ Auto/Manual deviation % control
+dordUseManualPer    = input.bool(false, "Use Manual Deviation % Override", group=groupDORD, display=display.none, tooltip="ON = use your custom % below. OFF = auto-pick: 37.5% for WIDE ORs, 75% for TIGHT ORs.")
+dordPerInp          = input.float(37.5, "Deviation % of Opening Range Width", minval=1, step=1, group=groupDORD, tooltip="Manual % distance for each deviation step (used only when override is ON).", display=display.none)
+dordDispType        = input.string("Adaptive", "Deviation Display", options=["Adaptive","Extended"], group=groupDORD, tooltip="Adaptive shows ~2 nearest deviations around price; Extended shows all to current bar", display=display.none)
+
+// DORD line extend (same group)
+dordExtendHLStr     = input.string("None", "Opening Range Line Extension Mode", options=["None","Left","Right","Both"], group=groupDORD, display=display.none)
+
+// Deviation + Midline style/width (unchanged)
+dordLineWidth       = input.int(1, "Deviation/Mid Line Width", minval=1, maxval=5, group=groupDORD, display=display.none)
+dordLineStyleStr    = input.string("Dashed", "Deviation Line Style", options=["Solid","Dashed","Dotted"], group=groupDORD, display=display.none)
+
+// Shared OR High/Low style/width (one set for both)
+dordHLLineWidth     = input.int(2, "OR High/Low Line Width", minval=1, maxval=5, group=groupDORD, display=display.none)
+dordHLLineStyleStr  = input.string("Solid", "OR High/Low Line Style", options=["Solid","Dashed","Dotted"], group=groupDORD, display=display.none)
+
+// Colors (separate per element)
+dordHighColor       = input.color(color.new(#089981, 40), "Opening Range High Color", group=groupDORD, display=display.none)
+dordLowColor        = input.color(color.new(#f23645, 40), "Opening Range Low Color",  group=groupDORD, display=display.none)
+dordMidColor        = input.color(color.new(color.gray, 40), "Opening Range Midline Color", group=groupDORD, display=display.none)
+dordColorUp         = input.color(color.new(color.gray, 40), "Bull OR Deviation Color", group=groupDORD, display=display.none)
+dordColorDn         = input.color(color.new(color.gray, 40), "Bear OR Deviation Color", group=groupDORD, display=display.none)
+
+// Labels & deviations (same group)
+dordShowHLLabels    = input.bool(true, "Show Opening Range Hi/Low Labels", group=groupDORD, display=display.none)
+dordHLLabelColor    = input.color(color.white, "OR Hi/Low Label Text Color", group=groupDORD, display=display.none)
+dordShowDevLabels   = input.bool(true, "Show OR Dev Labels", group=groupDORD, display=display.none)
+
+dordLabelSize       = input.string("Tiny", "Label Size (HL/Dev/Mid)", options=["Tiny","Small","Normal","Large","Huge"], group=groupDORD, display=display.none)
+// Toggle for centerline label (forced OFF when deviations are hidden)
+dordShowMidLabel    = input.bool(true, "Show OR Mid Label", group=groupDORD, display=display.none)
+
+// Toggle to show/hide DORD deviations; hides the midline too (keeps only OR High/Low)
+dordShowDevLines    = input.bool(true, "Show OR Deviation Lines", group=groupDORD, display=display.none, tooltip="Turn OFF to hide DORD deviation lines/labels and the OR midline/label, leaving only the OR High & Low.")
+
+// DORD Pre-OR (forming) Hi/Low dotted trackers
+preORHiLoTog = input.bool(true, "Enable Pre-OR Hi/Low Dotted Lines", group=groupDORD, tooltip="Track the evolving OR High/Low from session open until the OR confirms.", display=display.none)
+preORHiColor = input.color(color.new(color.lime, 0), "Pre-OR High Color", group=groupDORD, display=display.none)
+preORLoColor = input.color(color.new(color.red, 0),  "Pre-OR Low Color",  group=groupDORD, display=display.none)
+preORWidth   = input.int(1, "Pre-OR Hi/Low Width", minval=1, maxval=5, group=groupDORD, display=display.none)
+preORStyleStr= input.string("Dotted", "Pre-OR Hi/Low Style", options=["Solid","Dashed","Dotted"], group=groupDORD, display=display.none)
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// === ENUM PARSING ===
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+preORStyle        = preORStyleStr    == "Solid" ? line.style_solid : preORStyleStr    == "Dashed" ? line.style_dashed : line.style_dotted
+dordLineStyle     = dordLineStyleStr == "Solid" ? line.style_solid : dordLineStyleStr == "Dashed" ? line.style_dashed : line.style_dotted
+dordExtend        = dordExtendHLStr  == "Left"  ? extend.left       : dordExtendHLStr == "Right"  ? extend.right      : dordExtendHLStr== "Both" ? extend.both : extend.none
+// OR HL style map
+dordHLLineStyle   = dordHLLineStyleStr == "Solid" ? line.style_solid : dordHLLineStyleStr == "Dashed" ? line.style_dashed : line.style_dotted
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// === HELPERS ===
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+f_size(s) =>
+    s == "Tiny" ? size.tiny : s == "Small" ? size.small : s == "Normal" ? size.normal : s == "Large" ? size.large : size.huge
+
+// Label text
+f_lblText(_tf, _type, _price)        => _tf + " OR "   + _type + " / $" + str.tostring(_price, format.mintick)
+f_dordLblText(_tf, _type, _price)    => _tf + " DORD " + _type + " / $" + str.tostring(_price, format.mintick)
+f_dordDevLblText(_sign, _idx, _price)=> " DORD Dev "   + _sign + str.tostring(_idx) + " / $" + str.tostring(_price, format.mintick)
+
+// Label style chooser: Both/Right â†’ upper_left; None/Left â†’ left
+f_dord_lbl_style(_ext) =>
+    (_ext == extend.right or _ext == extend.both) ? label.style_none : label.style_label_left
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// === PRECOMPUTE ATR(14) ON OR TF EACH BAR (scope-consistent) ===
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+float atrOR = request.security(syminfo.tickerid, dord_tf, ta.atr(14))
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€  
+// === DORD SESSIONS, HL/Mid + DORD DEVIATIONS ===
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+var bool dord_sesh  = false
+new_tf = timeframe.change(dord_tf)
+if enableDORD
+    if session.isfirstbar
+        dord_sesh := true
+    else if not session.isfirstbar and new_tf
+        dord_sesh := false
+else
+    dord_sesh := false
+
+dord_start = dord_sesh and not dord_sesh[1]
+dord_end   = dord_sesh[1] and not dord_sesh
+
+// Forming trackers
+var float dordFormHi = na
+var float dordFormLo = na
+var line  dordFormHiLn = na
+var line  dordFormLoLn = na
+preDordWidth = preORWidth
+preDordStyle = preORStyle
+preDordHiCol = preORHiColor
+preDordLoCol = preORLoColor
+
+// Finalized values & handles
+var float dordH = na
+var float dordL = na
+var float dordW = na
+var float dordM = na
+var line  dH    = na
+var line  dL    = na
+var line  dM    = na
+var label dordHiLab  = na
+var label dordLoLab  = na
+var label dordMidLab = na
+
+// Targets
+type _targ
+    line ln
+    label lab
+var _targ[] dordUpTargs = array.new<_targ>()
+var _targ[] dordDnTargs = array.new<_targ>()
+var int   up_count = 0
+var int   dn_count = 0
+var float hst = na
+var float lst = na
+
+// Per-session % (fraction) chosen at OR finalize
+var float dordPerSession = na   // e.g., 0.375 (37.5%) or 0.75 (75%)
+
+// Step sources
+float h_src = close
+float l_src = close
+
+// Lookback containers
+var int   __dordCounter  = 0
+var int[] __sessIds      = array.new_int()
+var line[] __sessHigh    = array.new_line()
+var line[] __sessLow     = array.new_line()
+var line[] __sessMid     = array.new_line()
+
+var line[]  __histUpLines   = array.new_line()
+var label[] __histUpLabels  = array.new_label()
+var int[]   __histUpSessId  = array.new_int()
+
+var line[]  __histDnLines   = array.new_line()
+var label[] __histDnLabels  = array.new_label()
+var int[]   __histDnSessId  = array.new_int()
+
+// START of DORD window
+if enableDORD and dord_start
+    if __dordCounter > 0
+        // Archive UP targets
+        int _uN = array.size(dordUpTargs)
+        if _uN > 0
+            for i = 0 to _uN - 1
+                _targ t = array.get(dordUpTargs, i)
+                if not na(t.ln)
+                    line.set_x2(t.ln, bar_index - 1)
+                    array.push(__histUpLines, t.ln)
+                    array.push(__histUpLabels, na)
+                    array.push(__histUpSessId, __dordCounter)
+                if not na(t.lab)
+                    label.delete(t.lab)
+        // Archive DOWN targets
+        int _dN = array.size(dordDnTargs)
+        if _dN > 0
+            for i = 0 to _dN - 1
+                _targ t = array.get(dordDnTargs, i)
+                if not na(t.ln)
+                    line.set_x2(t.ln, bar_index - 1)
+                    array.push(__histDnLines, t.ln)
+                    array.push(__histDnLabels, na)
+                    array.push(__histDnSessId, __dordCounter)
+                if not na(t.lab)
+                    label.delete(t.lab)
+
+        // Clear current containers
+        array.clear(dordUpTargs)
+        array.clear(dordDnTargs)
+        up_count := 0
+        dn_count := 0
+
+        // Trim deviation history
+        int __keepFromDev = __dordCounter - dordSessionLookback + 2
+        int __k = 0
+        while __k < array.size(__histUpSessId)
+            int sid = array.get(__histUpSessId, __k)
+            if sid < __keepFromDev
+                line ln = array.get(__histUpLines, __k)
+                label lb = array.get(__histUpLabels, __k)
+                if not na(ln)
+                    line.delete(ln)
+                if not na(lb)
+                    label.delete(lb)
+                array.remove(__histUpLines, __k)
+                array.remove(__histUpLabels, __k)
+                array.remove(__histUpSessId, __k)
+            else
+                __k += 1
+        __k := 0
+        while __k < array.size(__histDnSessId)
+            int sid = array.get(__histDnSessId, __k)
+            if sid < __keepFromDev
+                line ln = array.get(__histDnLines, __k)
+                label lb = array.get(__histDnLabels, __k)
+                if not na(ln)
+                    line.delete(ln)
+                if not na(lb)
+                    label.delete(lb)
+                array.remove(__histDnLines, __k)
+                array.remove(__histDnLabels, __k)
+                array.remove(__histDnSessId, __k)
+            else
+                __k += 1
+
+    // initialize forming range
+    dordFormHi := high
+    dordFormLo := low
+
+    // reset per-session % until finalized
+    dordPerSession := na
+
+    // remove leftover dotted lines
+    if not na(dordFormHiLn)
+        line.delete(dordFormHiLn)
+        dordFormHiLn := na
+    if not na(dordFormLoLn)
+        line.delete(dordFormLoLn)
+        dordFormLoLn := na
+
+    // clear labels
+    label.delete(dordHiLab), label.delete(dordLoLab), label.delete(dordMidLab)
+    dordHiLab := na
+    dordLoLab := na
+    dordMidLab := na
+
+// LIVE (forming) window
+if enableDORD and dord_sesh
+    float _prevHi = na(dordFormHi) ? high : dordFormHi
+    float _prevLo = na(dordFormLo) ? low  : dordFormLo
+
+    dordFormHi := math.max(na(dordFormHi) ? high : dordFormHi, high)
+    dordFormLo := math.min(na(dordFormLo) ? low  : dordFormLo,  low)
+
+    if na(dordFormHiLn) and preORHiLoTog
+        dordFormHiLn := line.new(bar_index - 1, _prevHi, bar_index, dordFormHi, width=preDordWidth, style=preDordStyle, color=preDordHiCol, extend=extend.none)
+    else if not na(dordFormHiLn)
+        line.set_xy1(dordFormHiLn, bar_index - 1, _prevHi)
+        line.set_xy2(dordFormHiLn, bar_index,     dordFormHi)
+        line.set_style(dordFormHiLn, preDordStyle)
+        line.set_width(dordFormHiLn, preDordWidth)
+        line.set_color(dordFormHiLn, preDordHiCol)
+        line.set_extend(dordFormHiLn, extend.none)
+
+    if na(dordFormLoLn) and preORHiLoTog
+        dordFormLoLn := line.new(bar_index - 1, _prevLo, bar_index, dordFormLo, width=preDordWidth, style=preDordStyle, color=preDordLoCol, extend=extend.none)
+    else if not na(dordFormLoLn)
+        line.set_xy1(dordFormLoLn, bar_index - 1, _prevLo)
+        line.set_xy2(dordFormLoLn, bar_index,     dordFormLo)
+        line.set_style(dordFormLoLn, preDordStyle)
+        line.set_width(dordFormLoLn, preDordWidth)
+        line.set_color(dordFormLoLn, preDordLoCol)
+        line.set_extend(dordFormLoLn, extend.none)
+
+// END of window â†’ freeze H/L/Mid, seed targets and choose % (auto or manual)
+if enableDORD and dord_end
+    if not na(dordFormHiLn)
+        line.delete(dordFormHiLn)
+        dordFormHiLn := na
+    if not na(dordFormLoLn)
+        line.delete(dordFormLoLn)
+        dordFormLoLn := na
+
+    dordH := dordFormHi
+    dordL := dordFormLo
+    dordW := math.abs(dordH - dordL)
+    dordM := math.avg(dordH, dordL)
+
+    // AUTO wide/tight via ATR(14) on OR timeframe (uses precomputed atrOR)
+    float _autoPer = na(atrOR) ? 37.5 : (dordW >= atrOR ? 37.5 : 75.0)
+    dordPerSession := (dordUseManualPer ? dordPerInp : _autoPer) * 0.01
+
+    // â”€â”€ FIX: seed HL/Mid with a 1-bar span to avoid vertical tick on first bar
+    dH := line.new(bar_index - 1, dordH, bar_index, dordH, color=dordHighColor, width=dordHLLineWidth, style=dordHLLineStyle, extend=dordExtend)
+    dL := line.new(bar_index - 1, dordL, bar_index, dordL, color=dordLowColor,  width=dordHLLineWidth, style=dordHLLineStyle, extend=dordExtend)
+    dM := line.new(bar_index - 1, dordM, bar_index, dordM, color=dordMidColor,  width=dordLineWidth,     style=line.style_dashed,  extend=dordExtend)
+
+    __dordCounter += 1
+    array.push(__sessIds, __dordCounter)
+    array.push(__sessHigh, dH)
+    array.push(__sessLow,  dL)
+    array.push(__sessMid,  dM)
+
+    int __keepFrom = __dordCounter - dordSessionLookback + 1
+    int __i = 0
+    while __i < array.size(__sessIds)
+        int sid = array.get(__sessIds, __i)
+        if sid < __keepFrom
+            line lh = array.get(__sessHigh, __i)
+            line ll = array.get(__sessLow,  __i)
+            line lm = array.get(__sessMid,  __i)
+            if not na(lh)
+                line.delete(lh)
+            if not na(ll)
+                line.delete(ll)
+            if not na(lm)
+                line.delete(lm)
+            array.remove(__sessIds, __i)
+            array.remove(__sessHigh, __i)
+            array.remove(__sessLow,  __i)
+            array.remove(__sessMid,  __i)
+        else
+            __i += 1
+
+    // labels (ALL use dordLabelSize)
+    label.delete(dordHiLab), label.delete(dordLoLab), label.delete(dordMidLab)
+    string _tfTxt = str.tostring(dord_tf)
+    lblStyleNow = f_dord_lbl_style(dordExtend)
+
+    if dordShowHLLabels
+        dordHiLab := label.new(bar_index, dordH, text = _tfTxt + " OR High / $" + str.tostring(dordH, format.mintick), style=lblStyleNow, yloc=yloc.price, size=f_size(dordLabelSize), color=color.new(color.black, 100), textcolor=dordHLLabelColor)
+        dordLoLab := label.new(bar_index, dordL, text = _tfTxt + " OR Low / $" + str.tostring(dordL, format.mintick),  style=lblStyleNow, yloc=yloc.price, size=f_size(dordLabelSize), color=color.new(color.black, 100), textcolor=dordHLLabelColor)
+    else
+        dordHiLab := na
+        dordLoLab := na
+
+    if dordShowMidLabel and dordShowDevLines  // force hidden when deviations hidden
+        dordMidLab := label.new(bar_index, dordM, text = "OR 0 / $" + str.tostring(dordM, format.mintick), style=lblStyleNow, yloc=yloc.price, size=f_size(dordLabelSize), color=color.new(color.black, 100), textcolor=dordMidColor)
+    else
+        dordMidLab := na
+
+    float _per = na(dordPerSession) ? (dordUseManualPer ? dordPerInp * 0.01 : 0.375) : dordPerSession
+    hst := dordH + dordW * _per
+    lst := dordL - dordW * _per
+    up_count := 0
+    dn_count := 0
+
+// Outside the window â†’ extend & manage targets
+if enableDORD and not dord_sesh and not na(dordH) and not na(dordL)
+    if not na(dH)
+        line.set_x2(dH, bar_index)
+        line.set_extend(dH, dordExtend)
+    if not na(dL)
+        line.set_x2(dL, bar_index)
+        line.set_extend(dL, dordExtend)
+    if not na(dM)
+        line.set_x2(dM, bar_index)
+        line.set_extend(dM, dordExtend)
+
+    if dordShowHLLabels
+        if not na(dordHiLab)
+            label.set_x(dordHiLab, bar_index)
+        if not na(dordLoLab)
+            label.set_x(dordLoLab, bar_index)
+    else
+        if not na(dordHiLab)
+            label.delete(dordHiLab)
+            dordHiLab := na
+        if not na(dordLoLab)
+            label.delete(dordLoLab)
+            dordLoLab := na
+
+    // Mid label only if both toggles allow it
+    if dordShowMidLabel and dordShowDevLines
+        if not na(dordMidLab)
+            label.set_x(dordMidLab, bar_index)
+    else
+        if not na(dordMidLab)
+            label.delete(dordMidLab)
+            dordMidLab := na
+
+    // If deviations are hidden, also hide the midline visually
+    if not dordShowDevLines and not na(dM)
+        line.set_color(dM, color.new(dordMidColor, 100))
+    else if dordShowDevLines and not na(dM)
+        line.set_color(dM, dordMidColor)
+
+    float _per = na(dordPerSession) ? (dordUseManualPer ? dordPerInp * 0.01 : 0.375) : dordPerSession
+
+    if h_src > hst
+        hst := h_src
+    if l_src < lst
+        lst := l_src
+
+    up_max = int(math.ceil((hst - dordH) / (dordW * _per)))
+    dn_max = int(math.ceil((dordL - lst) / (dordW * _per)))
+    up_max := math.max(0, up_max)
+    dn_max := math.max(0, dn_max)
+
+    // â”€â”€â”€â”€â”€ Add NEW targets only if we are showing dev lines â”€â”€â”€â”€â”€
+    lblStyleNowIntraday = f_dord_lbl_style(dordExtend)
+    if dordShowDevLines
+        if up_count < up_max
+            for i = (up_count + 1) to up_max
+                float y = dordH + dordW * _per * i
+                line ln = line.new(bar_index - 1, y, bar_index, y, color=dordColorUp, width=dordLineWidth, style=dordLineStyle, extend=dordExtend)
+                string txt = dordShowDevLabels ? ("OR +" + str.tostring(i) + " / $" + str.tostring(y, format.mintick)) : ""
+                label lb  = label.new(bar_index, y, txt, style=lblStyleNowIntraday,
+                                      textcolor=dordShowDevLabels ? color.new(dordColorUp, 0) : color.new(color.black, 100),
+                                      color=color.new(color.black, 100), size=f_size(dordLabelSize))
+                array.push(dordUpTargs, _targ.new(ln, lb))
+        up_count := up_max
+
+        if dn_count < dn_max
+            for i = (dn_count + 1) to dn_max
+                float y = dordL - dordW * _per * i
+                line ln = line.new(bar_index - 1, y, bar_index, y, color=dordColorDn, width=dordLineWidth, style=dordLineStyle, extend=dordExtend)
+                string txt = dordShowDevLabels ? ("OR -" + str.tostring(i) + " / $" + str.tostring(y, format.mintick)) : ""
+                label lb  = label.new(bar_index, y, txt, style=lblStyleNowIntraday,
+                                      textcolor=dordShowDevLabels ? color.new(dordColorDn, 0) : color.new(color.black, 100),
+                                      color=color.new(color.black, 100), size=f_size(dordLabelSize))
+                array.push(dordDnTargs, _targ.new(ln, lb))
+        dn_count := dn_max
+
+    // â”€â”€â”€â”€â”€ Display mode for CURRENT targets â€” guarded by sizes â”€â”€â”€â”€â”€
+    if dordShowDevLines
+        if dordDispType == "Extended"
+            int _nu = array.size(dordUpTargs)
+            if _nu > 0
+                for i = 0 to _nu - 1
+                    _targ t = array.get(dordUpTargs, i)
+                    if not na(t.ln)
+                        line.set_x2(t.ln, bar_index)
+                        line.set_extend(t.ln, dordExtend)
+                    if not na(t.lab)
+                        label.set_x(t.lab, bar_index)
+
+            int _nd = array.size(dordDnTargs)
+            if _nd > 0
+                for i = 0 to _nd - 1
+                    _targ t = array.get(dordDnTargs, i)
+                    if not na(t.ln)
+                        line.set_x2(t.ln, bar_index)
+                        line.set_extend(t.ln, dordExtend)
+                    if not na(t.lab)
+                        label.set_x(t.lab, bar_index)
+        else
+            // Adaptive
+            up_cur = int(math.max(0, math.ceil((close - dordH) / (dordW * _per))))
+            dn_cur = int(math.max(0, math.ceil((dordL - close) / (dordW * _per))))
+
+            int _nu = array.size(dordUpTargs)
+            if _nu > 0
+                for i = 0 to _nu - 1
+                    _targ t = array.get(dordUpTargs, i)
+                    bool show = (i + 1) <= up_cur and (i + 1) >= math.max(1, up_cur - 1)
+                    if not na(t.ln)
+                        line.set_x2(t.ln, show ? bar_index + 1 : bar_index)
+                        line.set_extend(t.ln, dordExtend)
+                    if not na(t.lab)
+                        label.set_x(t.lab, show ? bar_index + 1 : bar_index)
+
+            int _nd = array.size(dordDnTargs)
+            if _nd > 0
+                for i = 0 to _nd - 1
+                    _targ t = array.get(dordDnTargs, i)
+                    bool show = (i + 1) <= dn_cur and (i + 1) >= math.max(1, dn_cur - 1)
+                    if not na(t.ln)
+                        line.set_x2(t.ln, show ? bar_index + 1 : bar_index)
+                        line.set_extend(t.ln, dordExtend)
+                    if not na(t.lab)
+                        label.set_x(t.lab, show ? bar_index + 1 : bar_index)
+    else
+        // Deviation lines toggle OFF â†’ fade any existing current session targets (no new ones added)
+        int _nu = array.size(dordUpTargs)
+        if _nu > 0
+            for i = 0 to _nu - 1
+                _targ t = array.get(dordUpTargs, i)
+                if not na(t.ln)
+                    line.set_color(t.ln, color.new(dordColorUp, 100))
+                if not na(t.lab)
+                    label.set_textcolor(t.lab, color.new(dordColorUp, 100))
+        int _nd = array.size(dordDnTargs)
+        if _nd > 0
+            for i = 0 to _nd - 1
+                _targ t = array.get(dordDnTargs, i)
+                if not na(t.ln)
+                    line.set_color(t.ln, color.new(dordColorDn, 100))
+                if not na(t.lab)
+                    label.set_textcolor(t.lab, color.new(dordColorDn, 100))
+
+// Apply extend to all kept lines
+if enableDORD
+    int __nSess = math.min( math.min(array.size(__sessIds), array.size(__sessHigh)), math.min(array.size(__sessLow),  array.size(__sessMid)))
+    if __nSess > 0
+        for j = 0 to __nSess - 1
+            line lh = array.get(__sessHigh, j)
+            line ll = array.get(__sessLow,  j)
+            line lm = array.get(__sessMid,  j)
+            if not na(lh)
+                line.set_extend(lh, dordExtend)
+            if not na(ll)
+                line.set_extend(ll, dordExtend)
+            if not na(lm)
+                line.set_extend(lm, dordExtend)
+
+    if not na(dH)
+        line.set_extend(dH, dordExtend)
+    if not na(dL)
+        line.set_extend(dL, dordExtend)
+    if not na(dM)
+        line.set_extend(dM, dordExtend)
+
+    // Deviation lines (history) â€” extension only
+    int __nUpHist = array.size(__histUpLines)
+    if __nUpHist > 0
+        for i = 0 to __nUpHist - 1
+            line ln = array.get(__histUpLines, i)
+            if not na(ln)
+                line.set_extend(ln, dordExtend)
+    int __nDnHist = array.size(__histDnLines)
+    if __nDnHist > 0
+        for i = 0 to __nDnHist - 1
+            line ln = array.get(__histDnLines, i)
+            if not na(ln)
+                line.set_extend(ln, dordExtend)
+
+    // Deviation lines (current) â€” respect visibility toggle
+    if dordShowDevLines
+        int __nUpCur = array.size(dordUpTargs)
+        if __nUpCur > 0
+            for i = 0 to __nUpCur - 1
+                _targ t = array.get(dordUpTargs, i)
+                if not na(t.ln)
+                    line.set_extend(t.ln, dordExtend)
+        int __nDnCur = array.size(dordDnTargs)
+        if __nDnCur > 0
+            for i = 0 to __nDnCur - 1
+                _targ t = array.get(dordDnTargs, i)
+                if not na(t.ln)
+                    line.set_extend(t.ln, dordExtend)
+
+
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// LOOKBACK HIGH/LOW 
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// === LOOKBACK HIGH/LOW SETTINGS ===
+groupLookback = "------------ Lookback High/Low Settings ------------"
+enableLookbackHL    = input.bool(true, "Enable Lookback High/Low", group=groupM, tooltip="Toggle to show high/low levels from past higher timeframe candles", display=display.none)
+lookbackTF          = input.timeframe("D", "Lookback Timeframe", group=groupLookback, tooltip="Timeframe from which highs/lows are retrieved", display=display.none)
+lookbackBars        = input.int(2, "Lookback Candles", minval=1, maxval=500, group=groupLookback, tooltip="How many HTF candles back to show lines for", display=display.none)
+lbExtendStr         = input.string("Both", "Line Extend", options=["None", "Left", "Right", "Both"], group=groupLookback, tooltip="Extension style for lookback lines", display=display.none)
+lookbackLineWidth   = input.int(1, "Line Width", minval=1, maxval=5, group=groupLookback, display=display.none)
+lookbackLineStyle   = input.string("Dashed", "Line Style", options=["Solid", "Dashed", "Dotted"], group=groupLookback, display=display.none)
+lookbackLineColorHi = input.color(color.new(#00ff08, 0), "High Color", group=groupLookback, display=display.none)
+lookbackLineColorLo = input.color(color.new(#ff0000, 0), "Low Color",  group=groupLookback, display=display.none)
+
+// NEW: label controls (match DTR/DORD behavior)
+lookbackShowLabels  = input.bool(true, "Show Labels", group=groupLookback, display=display.none, tooltip="Show/Hide lookback High/Low labels pinned to the right edge.")
+lookbackLabelSize   = input.string("Tiny", "Label Size", options=["Tiny","Small","Normal","Large","Huge"], group=groupLookback, display=display.none, tooltip="Font size for lookback High/Low labels.")
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// === ENUM PARSING ===
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+lbStyle  = lookbackLineStyle == "Solid" ? line.style_solid : lookbackLineStyle == "Dashed" ? line.style_dashed : line.style_dotted
+lbExtend = lbExtendStr == "Left" ? extend.left : lbExtendStr == "Right" ? extend.right : lbExtendStr == "Both" ? extend.both : extend.none
+
+// Match DTR/DORD label behavior by extend setting
+lbLabelStyle = (lbExtendStr == "Right" or lbExtendStr == "Both") ? label.style_none : label.style_label_left
+
+// Size helper
+f_lb_size(s) =>
+    s=="Tiny"?size.tiny:s=="Small"?size.small:s=="Normal"?size.normal:s=="Large"?size.large:s=="Huge"?size.huge:size.small
+
+// Arrays
+var float[] lbHighs   = array.new_float()
+var float[] lbLows    = array.new_float()
+var int[]   lbTimes   = array.new_int()
+var line[]  lbHiLines = array.new_line()
+var line[]  lbLoLines = array.new_line()
+var label[] lbHiLabs  = array.new_label()
+var label[] lbLoLabs  = array.new_label()
+
+// HTF streams
+lookbackHighNow = request.security(syminfo.tickerid, lookbackTF, high, lookahead=barmerge.lookahead_on)
+lookbackLowNow  = request.security(syminfo.tickerid, lookbackTF, low,  lookahead=barmerge.lookahead_on)
+lookbackTimeNow = request.security(syminfo.tickerid, lookbackTF, time, lookahead=barmerge.lookahead_on)
+isNewHTFBar     = ta.change(lookbackTimeNow) != 0
+
+// Collect rolling HTF values
+if enableLookbackHL and isNewHTFBar
+    if array.size(lbTimes) == 0 or lookbackTimeNow != array.get(lbTimes, 0)
+        array.unshift(lbHighs, lookbackHighNow)
+        array.unshift(lbLows,  lookbackLowNow)
+        array.unshift(lbTimes, lookbackTimeNow)
+        if array.size(lbHighs) > lookbackBars
+            array.pop(lbHighs)
+            array.pop(lbLows)
+            array.pop(lbTimes)
+
+if enableLookbackHL and array.size(lbTimes) > 0
+    array.set(lbHighs, 0, lookbackHighNow)
+    array.set(lbLows,  0, lookbackLowNow)
+
+// Helper: build label text per index + price (timeframe-aware)
+// â€¢ Daily: leave as-is (no TF tag)
+// â€¢ 1â€“4H: format as hours ("1H", "4H")
+// â€¢ Intraday minutes: "5m", "15m", etc.
+// â€¢ "Prev"/"Last" always in front of the timeframe text.
+// â€¢ Weekly/monthly "Wk of" rows drop the raw TF ("1W", "1M") to avoid redundancy.
+f_lb_text(idx, isHigh, price) =>
+    tf        = lookbackTF
+    tfUpper   = str.upper(tf)
+    isDaily   = str.contains(tfUpper, "D")
+    isWeekly  = str.contains(tfUpper, "W")
+    isMonthly = str.contains(tfUpper, "M")
+    isNumeric = not na(str.tonumber(tf))  // intraday like "5", "15", "60", "240", etc.
+
+    // Human-readable timeframe (5m, 1Hâ€“4H, monthly "Mo", fallback = raw tf)
+    string tfPretty = tf
+    if isNumeric
+        float nRaw = str.tonumber(tf)
+        if not na(nRaw)
+            int nMins = int(nRaw)
+            if nMins >= 60 and nMins <= 240 and nMins % 60 == 0
+                // 60, 120, 180, 240 -> 1Hâ€“4H
+                int h = nMins / 60
+                tfPretty := str.tostring(h) + "H"
+            else
+                // All other numeric intraday -> minutes
+                tfPretty := str.tostring(nMins) + "m"
+    else
+        // Non-numeric: adjust monthly to use "Mo" instead of bare "M"
+        if isMonthly
+            tfPretty := str.replace(tfPretty, "M", "Mo")
+
+    string base = ""
+
+    if isDaily
+        // Daily: NO timeframe tag at all (keep original behavior)
+        if idx == 0
+            base := isHigh ? "High" : "Low"
+        else if idx == 1
+            base := isHigh ? "Prev High" : "Prev Low"
+        else
+            t = array.get(lbTimes, idx)
+            base := str.tostring(month(t)) + "/" + str.tostring(dayofmonth(t)) + (isHigh ? " High" : " Low")
+    else
+        // Non-daily: include timeframe where it isn't redundant
+        if idx == 0
+            // Current bar: "<TF> High/Low"
+            base := tfPretty + " " + (isHigh ? "High" : "Low")
+        else if idx == 1
+            // Previous bar: "Prev <TF> High/Low" or "Last <TF> High/Low" for W/M
+            if isWeekly or isMonthly
+                base := "Last " + tfPretty + " " + (isHigh ? "High" : "Low")
+            else
+                base := "Prev " + tfPretty + " " + (isHigh ? "High" : "Low")
+        else
+            if isWeekly or isMonthly
+                // Older weekly/monthly: "Wk of MM/DD High/Low" (no "1W"/"1M" prefix)
+                t = array.get(lbTimes, idx)
+                base := "Wk of " + str.tostring(month(t)) + "/" + str.tostring(dayofmonth(t)) + (isHigh ? " High" : " Low")
+            else
+                // Older intraday: "<TF> High/Low -N"
+                base := tfPretty + " " + (isHigh ? "High" : "Low") + " -" + str.tostring(idx)
+
+    priceStr = "$" + str.tostring(price, format.mintick)
+    base + " / " + priceStr
+
+if enableLookbackHL and array.size(lbHighs) > 0 and array.size(lbLows) > 0
+    int need = array.size(lbHighs)
+
+    // Grow lines (always)
+    while array.size(lbHiLines) < need
+        int idx = array.size(lbHiLines)
+        float hiV = array.get(lbHighs, idx)
+        float loV = array.get(lbLows,  idx)
+        line hLn = line.new(bar_index, hiV, bar_index - 500, hiV, color=lookbackLineColorHi, width=lookbackLineWidth, style=lbStyle, extend=lbExtend)
+        line lLn = line.new(bar_index, loV, bar_index - 500, loV, color=lookbackLineColorLo, width=lookbackLineWidth, style=lbStyle, extend=lbExtend)
+        array.push(lbHiLines, hLn)
+        array.push(lbLoLines, lLn)
+
+        // Create labels only if toggle is on
+        if lookbackShowLabels
+            string hiTxt = f_lb_text(idx, true, hiV)
+            string loTxt = f_lb_text(idx, false, loV)
+            label hiLb = label.new(timenow, hiV, hiTxt, xloc=xloc.bar_time, style=lbLabelStyle, yloc=yloc.price, size=f_lb_size(lookbackLabelSize), color=color.new(color.black, 100), textcolor=lookbackLineColorHi)
+            label loLb = label.new(timenow, loV, loTxt, xloc=xloc.bar_time, style=lbLabelStyle, yloc=yloc.price, size=f_lb_size(lookbackLabelSize), color=color.new(color.black, 100), textcolor=lookbackLineColorLo)
+            array.push(lbHiLabs, hiLb)
+            array.push(lbLoLabs, loLb)
+
+    // Trim extras (lines + labels)
+    while array.size(lbHiLines) > need
+        line.delete(array.pop(lbHiLines))
+        line.delete(array.pop(lbLoLines))
+        if array.size(lbHiLabs) > 0
+            label.delete(array.pop(lbHiLabs))
+        if array.size(lbLoLabs) > 0
+            label.delete(array.pop(lbLoLabs))
+
+    // If labels are toggled OFF, delete any existing labels and clear arrays
+    if not lookbackShowLabels
+        if array.size(lbHiLabs) > 0
+            for lbDel in lbHiLabs
+                if not na(lbDel)
+                    label.delete(lbDel)
+            array.clear(lbHiLabs)
+        if array.size(lbLoLabs) > 0
+            for lbDel in lbLoLabs
+                if not na(lbDel)
+                    label.delete(lbDel)
+            array.clear(lbLoLabs)
+
+    // Update lines every bar
+    for i = 0 to need - 1
+        float hiV = array.get(lbHighs, i)
+        float loV = array.get(lbLows,  i)
+        line hLn = array.get(lbHiLines, i)
+        line lLn = array.get(lbLoLines, i)
+        line.set_y1(hLn, hiV), line.set_y2(hLn, hiV)
+        line.set_y1(lLn, loV), line.set_y2(lLn, loV)
+        line.set_extend(hLn, lbExtend), line.set_extend(lLn, lbExtend)
+        line.set_style(hLn, lbStyle),   line.set_style(lLn, lbStyle)
+        line.set_width(hLn, lookbackLineWidth), line.set_width(lLn, lookbackLineWidth)
+        line.set_color(hLn, lookbackLineColorHi), line.set_color(lLn, lookbackLineColorLo)
+
+        // Update labels only if toggle is ON
+        if lookbackShowLabels
+            // Ensure we have a label slot for this index
+            if array.size(lbHiLabs) <= i
+                array.push(lbHiLabs, label.new(timenow, hiV, "", xloc=xloc.bar_time, style=lbLabelStyle, yloc=yloc.price, size=f_lb_size(lookbackLabelSize), color=color.new(color.black, 100), textcolor=lookbackLineColorHi))
+            if array.size(lbLoLabs) <= i
+                array.push(lbLoLabs, label.new(timenow, loV, "", xloc=xloc.bar_time, style=lbLabelStyle, yloc=yloc.price, size=f_lb_size(lookbackLabelSize), color=color.new(color.black, 100), textcolor=lookbackLineColorLo))
+
+            label hiLb = array.get(lbHiLabs, i)
+            label loLb = array.get(lbLoLabs, i)
+            if not na(hiLb)
+                label.set_x(hiLb, timenow)
+                label.set_y(hiLb, hiV)
+                label.set_text(hiLb, f_lb_text(i, true, hiV))
+                label.set_textcolor(hiLb, lookbackLineColorHi)
+                label.set_style(hiLb, lbLabelStyle)
+                label.set_size(hiLb, f_lb_size(lookbackLabelSize))
+            if not na(loLb)
+                label.set_x(loLb, timenow)
+                label.set_y(loLb, loV)
+                label.set_text(loLb, f_lb_text(i, false, loV))
+                label.set_textcolor(loLb, lookbackLineColorLo)
+                label.set_style(loLb, lbLabelStyle)
+                label.set_size(loLb, f_lb_size(lookbackLabelSize))
+else
+    // Clean up everything when disabled or no data
+    if array.size(lbHiLines) > 0
+        for lnDel in lbHiLines
+            if not na(lnDel)
+                line.delete(lnDel)
+        array.clear(lbHiLines)
+    if array.size(lbLoLines) > 0
+        for lnDel in lbLoLines
+            if not na(lnDel)
+                line.delete(lnDel)
+        array.clear(lbLoLines)
+    if array.size(lbHiLabs) > 0
+        for lbDel in lbHiLabs
+            if not na(lbDel)
+                label.delete(lbDel)
+        array.clear(lbHiLabs)
+    if array.size(lbLoLabs) > 0
+        for lbDel in lbLoLabs
+            if not na(lbDel)
+                label.delete(lbDel)
+        array.clear(lbLoLabs)
+
+
+
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// === INTEGRATED PRE-MARKET HIGH/LOW LOGIC (updated) ===
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// === PRE-MARKET HIGH/LOW SETTINGS ===
+groupPM = "------------ Pre-Market High/Low ------------"
+pmTog             = input.bool(true, "Enable Pre-Market High/Low", group=groupM, display=display.none)
+pmShowHighs       = input.bool(true,  "Show pre-market high", group=groupPM, display=display.none)
+pmShowLows        = input.bool(true,  "Show pre-market low",  group=groupPM, display=display.none)
+pmMaxDayLines     = input.int(1, "Previous Sessions to show", minval=1, group=groupPM, display=display.none)
+
+// (Kept for layout compatibility; prior sessions now always stop at their own RTH close.)
+pmExtendChoice    = input.string("Previous Only", "Previous Session Lines Extend Choice", options=["Previous Only","All","None"], group=groupPM, tooltip="Kept for compatibility. Prior sessions now always stop at their own RTH close.", display=display.none)
+
+pmRthLineLen      = input.int(22, "(Line length: bars forward from RTH open)", minval=0, group=groupPM, display=display.none)
+pmShowLabels      = input.bool(true, "Labels", group=groupPM, display=display.none)
+pmTextCol         = input.color(color.blue, "Label Color", group=groupPM, display=display.none)
+pmTextSize        = input.string(size.tiny, "Label Size", options=[size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group=groupPM, display=display.none)  // default tiny
+pmShowLines       = input.bool(true, "Lines", group=groupPM, display=display.none)
+pmLineColH        = input.color(color.blue, "High line color", group=groupPM, display=display.none)
+pmLineColL        = input.color(color.blue,   "Low line color",  group=groupPM, display=display.none)
+pmLineWidth       = input.int(1, "Line width", group=groupPM, display=display.none)
+pmLineStyleStr    = input.string("dotted", "Line style", options=["arrow left","solid","dotted","dashed"], group=groupPM, tooltip="Applies when chart is ETH", display=display.none)
+pmShowDayDate     = input.bool(true, "(show day/date on labels)", group=groupPM, display=display.none)
+pmShowNascent     = input.bool(true, "Plot realtime pre-Mkt Highest/Lowest", group=groupPM, tooltip="Only outside Regular trading hours; dynamic during ETH", display=display.none)
+pmNascentHiCol    = input.color(color.blue,    "Nascent high color", group=groupPM, display=display.none)
+pmNascentLoCol    = input.color(color.fuchsia, "Nascent low color",  group=groupPM, display=display.none)
+pmNascentStyleStr = input.string("dotted", "Nascent line style", options=["arrow left","solid","dotted","dashed"], group=groupPM, display=display.none)
+pmRegSession      = input.session("0930-1600", "Regular Session", group=groupPM, display=display.none)
+pmNonMktSession   = input.session("1600-0930", "Non-Market Hours", group=groupPM, display=display.none)
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// === ENUM PARSING ===
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+pmLineStyle    = pmLineStyleStr    == "arrow left" ? line.style_arrow_left : pmLineStyleStr    == "solid" ? line.style_solid : pmLineStyleStr    == "dotted" ? line.style_dotted : line.style_dashed
+pmNascentStyle = pmNascentStyleStr == "arrow left" ? line.style_arrow_left : pmNascentStyleStr == "solid" ? line.style_solid : pmNascentStyleStr == "dotted" ? line.style_dotted : line.style_dashed
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Helpers
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+pmHighAccum(_inNonMktHrs) =>
+    var float result = na
+    if _inNonMktHrs and not _inNonMktHrs[1]
+        result := high
+    else if _inNonMktHrs
+        result := math.max(result, high)
+    result
+
+pmLowAccum(_inNonMktHrs) =>
+    var float result = na
+    if _inNonMktHrs and not _inNonMktHrs[1]
+        result := low
+    else if _inNonMktHrs
+        result := math.min(result, low)
+    result
+
+pmOpenTime(_sess) =>
+    var int _openTime = na
+    if _sess and not _sess[1]
+        _openTime := time
+    _openTime
+
+// Day ordinal (st/nd/rd/th) without superscripts
+pmDayOrdinal(_t) =>
+    ddStr = str.format_time(_t, "dd", "America/New_York")
+    dd    = str.tonumber(ddStr)
+    last2 = dd % 100
+    last1 = dd % 10
+    suf   = (last2 >= 11 and last2 <= 13) ? "th" : last1 == 1 ? "st" : last1 == 2 ? "nd" : last1 == 3 ? "rd" : "th"
+    str.tostring(dd) + suf
+
+pmDowLabel(_t) =>
+    _dow = dayofweek(_t, "America/New_York")
+    _dow == 1 ? "Sun" : _dow == 2 ? "Mon" : _dow == 3 ? "Tue" : _dow == 4 ? "Wed" : _dow == 5 ? "Thu" : _dow == 6 ? "Fri" : "Sat"
+
+// "PM High | Fri 17th | $687.98 "
+pmBuildLabel(_isHigh, _t, _px) =>
+    side = _isHigh ? "PM High" : "PM Low"
+    dow  = pmDowLabel(_t)
+    dom  = pmDayOrdinal(_t)
+    priceTxt = "$" + str.tostring(_px, "#.00")
+    side + " | " + dow + " " + dom + " | " + priceTxt + " "
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Globals (for alerts)
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+var float lastPreMktHi = na
+var float lastPreMktLo = na
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Main
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+colorNone = color.new(color.white, 100)
+
+if pmTog
+    inNonMktHrs = not na(time(timeframe.period, pmNonMktSession, "America/New_York"))
+    inRegSess   = not na(time(timeframe.period, pmRegSession,    "America/New_York"))
+
+    // Track the last in-RTH bar time; used to cap lines at RTH close
+    var int rthLastBarTime = na
+    rthLastBarTime := inRegSess ? time : nz(rthLastBarTime[1])
+
+    // Detect RTH close on this bar
+    justClosedRTH = inRegSess[1] and not inRegSess
+
+    // Compute once per bar (prevents consistency warnings)
+    prevRthCloseTime = ta.valuewhen(inRegSess[1] and not inRegSess, rthLastBarTime[1], 0)
+
+    // Extended-session source for pre-market extremes
+    extendedTicker   = ticker.modify(syminfo.ticker, session=session.extended)
+    tickerExtHighest = request.security(extendedTicker, timeframe.period, pmHighAccum(inNonMktHrs)[1], lookahead=barmerge.lookahead_on)
+    tickerExtLowest  = request.security(extendedTicker, timeframe.period, pmLowAccum(inNonMktHrs)[1],  lookahead=barmerge.lookahead_on)
+    nonMktHrsStart   = request.security(extendedTicker, timeframe.period, pmOpenTime(inNonMktHrs))
+
+    // State
+    var line     pmHiLine = na
+    var label    pmHiLab  = na
+    var line[]   pmHiArr  = array.new_line()
+    var label[]  pmHiLabArr = array.new_label()
+
+    var line     pmLoLine = na
+    var label    pmLoLab  = na
+    var line[]   pmLoArr  = array.new_line()
+    var label[]  pmLoLabArr = array.new_label()
+
+    // Track which array indexes belong to the *current* session
+    var int currHiIdx = na
+    var int currLoIdx = na
+
+    // If RTH just closed, hard-cap the current session lines at their own RTH last bar and clear indices
+    if justClosedRTH
+        if not na(currHiIdx) and currHiIdx < array.size(pmHiArr)
+            _hl   = array.get(pmHiArr, currHiIdx)
+            line.set_x2(_hl, rthLastBarTime[1])
+            _hlab = array.get(pmHiLabArr, currHiIdx)
+            label.set_x(_hlab, rthLastBarTime[1])
+        if not na(currLoIdx) and currLoIdx < array.size(pmLoArr)
+            _ll   = array.get(pmLoArr, currLoIdx)
+            line.set_x2(_ll, rthLastBarTime[1])
+            _llab = array.get(pmLoLabArr, currLoIdx)
+            label.set_x(_llab, rthLastBarTime[1])
+        currHiIdx := na
+        currLoIdx := na
+
+    // â”€â”€ New session HIGH (first RTH bar)
+    condNewHi = (syminfo.type == "stock" or syminfo.type == "fund") ? (session.isfirstbar_regular and pmShowHighs)
+                                                                   : (inNonMktHrs[1] and not inNonMktHrs and pmShowHighs)
+    if condNewHi
+        lastPreMktHi := tickerExtHighest
+        pmHiLine := line.new(nonMktHrsStart, tickerExtHighest, time, tickerExtHighest,
+                             xloc=xloc.bar_time, style=pmLineStyle,
+                             color=(pmShowLines ? pmLineColH : colorNone), width=pmLineWidth)
+        txtH = pmShowLabels ? (pmShowDayDate ? pmBuildLabel(true, time, tickerExtHighest)
+                                             : ("PM High | " + "$" + str.tostring(tickerExtHighest, "#.00") + " ")) : ""
+        pmHiLab := label.new(time, tickerExtHighest, text=txtH,
+                             style=label.style_label_left, color=colorNone,
+                             textcolor=pmTextCol, xloc=xloc.bar_time, size=pmTextSize)
+
+        array.push(pmHiArr, pmHiLine)
+        array.push(pmHiLabArr, pmHiLab)
+
+        // Mark as current-session high
+        currHiIdx := array.size(pmHiArr) - 1
+
+        // Cap the PRIOR session high at its own RTH close (hard stop)
+        if array.size(pmHiArr) > 1 and not na(prevRthCloseTime)
+            _prior   = array.get(pmHiArr, array.size(pmHiArr) - 2)
+            _priorLb = array.get(pmHiLabArr, array.size(pmHiLabArr) - 2)
+            line.set_x2(_prior, prevRthCloseTime)
+            label.set_x(_priorLb, prevRthCloseTime)
+
+        // Trim history to limit
+        if array.size(pmHiArr) > pmMaxDayLines
+            line.delete(array.shift(pmHiArr))
+            label.delete(array.shift(pmHiLabArr))
+            // Current index now points to last element
+            currHiIdx := array.size(pmHiArr) - 1
+
+    // â”€â”€ New session LOW (first RTH bar)
+    condNewLo = (syminfo.type == "stock" or syminfo.type == "fund") ? (session.isfirstbar_regular and pmShowLows)
+                                                                   : (inNonMktHrs[1] and not inNonMktHrs and pmShowLows)
+    if condNewLo
+        lastPreMktLo := tickerExtLowest
+        pmLoLine := line.new(nonMktHrsStart, tickerExtLowest, time, tickerExtLowest,
+                             xloc=xloc.bar_time, style=pmLineStyle,
+                             color=(pmShowLines ? pmLineColL : colorNone), width=pmLineWidth)
+        txtL = pmShowLabels ? (pmShowDayDate ? pmBuildLabel(false, time, tickerExtLowest)
+                                             : ("PM Low | " + "$" + str.tostring(tickerExtLowest, "#.00") + " ")) : ""
+        pmLoLab := label.new(time, tickerExtLowest, text=txtL,
+                             style=label.style_label_left, color=colorNone,
+                             textcolor=pmTextCol, xloc=xloc.bar_time, size=pmTextSize)
+
+        array.push(pmLoArr, pmLoLine)
+        array.push(pmLoLabArr, pmLoLab)
+
+        // Mark as current-session low
+        currLoIdx := array.size(pmLoArr) - 1
+
+        // Cap the PRIOR session low at its own RTH close (hard stop)
+        if array.size(pmLoArr) > 1 and not na(prevRthCloseTime)
+            _prior   = array.get(pmLoArr, array.size(pmLoArr) - 2)
+            _priorLb = array.get(pmLoLabArr, array.size(pmLoLabArr) - 2)
+            line.set_x2(_prior, prevRthCloseTime)
+            label.set_x(_priorLb, prevRthCloseTime)
+
+        // Trim history to limit
+        if array.size(pmLoArr) > pmMaxDayLines
+            line.delete(array.shift(pmLoArr))
+            label.delete(array.shift(pmLoLabArr))
+            currLoIdx := array.size(pmLoArr) - 1
+
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Extend ONLY the *current* session lines each bar (during RTH)
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    if inRegSess
+        if not na(currHiIdx) and currHiIdx < array.size(pmHiArr)
+            _currHi = array.get(pmHiArr, currHiIdx)
+            line.set_x2(_currHi, time)
+            _hlab = array.get(pmHiLabArr, currHiIdx)
+            label.set_x(_hlab, time)
+
+        if not na(currLoIdx) and currLoIdx < array.size(pmLoArr)
+            _currLo = array.get(pmLoArr, currLoIdx)
+            line.set_x2(_currLo, time)
+            _llab = array.get(pmLoLabArr, currLoIdx)
+            label.set_x(_llab, time)
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Alerts (unchanged)
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+pmCrossOverRaw  = ta.crossover(high, lastPreMktHi)
+pmCrossUnderRaw = ta.crossunder(low,  lastPreMktLo)
+pmAlertOver  = pmTog and not na(lastPreMktHi) and pmCrossOverRaw
+pmAlertUnder = pmTog and not na(lastPreMktLo) and pmCrossUnderRaw
+alertcondition(pmAlertOver,  "Cross OVER pre Mkt High", "Price crossed above Pre-market high")
+alertcondition(pmAlertUnder, "Cross UNDER pre Mkt Low", "Price crossed below Pre-market low")
+
+
+//@version=6
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// DIX$ON DMA S/R Trend Zones (DTZ) â€” MTF + selectable avg types
+// â€¢ Strict continuation entry gating (works with HTF step-held short)
+// â€¢ Zones: bar_index anchors (like your working example), strict lookback
+// â€¢ Merge: no stacking (union) + post-pass coalesce
+// â€¢ Flip arrow labels restored
+// â€¢ Keeps master toggle group = groupM (do not change)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+groupDKT          = "------------ Dix$on DMA S/R Trend Zones (DTZ) ------------"
+groupShortDMA     = "DTZ Fast MA "
+groupLongDMA      = "DTZ Slow MA "
+groupDKTMTF       = "DTZ MTF & Smoothing"
+groupDKTViz       = "DTZ Global Visuals"
+groupDKTBoxes     = "DTZ Zones"
+groupDKTBar       = "DTZ Bar Coloring"
+groupDKTLabels    = "DTZ Labels"
+groupDKTEntry     = "DTZ Entries "
+groupDKTArrows    = "DTZ Turn Arrows"
+
+// â”€â”€ Core (keep master = groupM)
+dktEnable         = input.bool(true, "Enable Dix$on DMA S/R Trend Zones (DTZ)", group=groupM, display=display.none, tooltip="Master on/off for the entire DTZ module.")
+dktLinesAndFillOn = input.bool(true, "Show DMAs & Highlighter", group=groupDKT, display=display.none, inline="core1", tooltip="Toggle all DMA lines and the highlighter fill on/off.")
+i_mtf_mode        = input.bool(true, "MTF Smoothed Mode", group=groupDKT, display=display.none, inline="core1", tooltip="If enabled, uses smoothed multi-timeframe logic for DMAs.")
+
+// Short DMA (compact layout)
+dktShowShortLine = input.bool(true, "Show Fast MA", group=groupShortDMA, display=display.none, inline="s1", tooltip="Toggle plotting of the Fast MA line.")
+short_type       = input.string("Kalman", "Type", options=["Kalman","EMA","MA"], group=groupShortDMA, display=display.none, inline="s2", tooltip="Averaging method for the Fast MA.")
+short_tf         = input.timeframe("", "Timeframe", group=groupShortDMA, display=display.none, inline="s2", tooltip="Optional higher timeframe source for the Fast MA (blank = chart timeframe).")
+short_len        = input.int(50, "Length", minval=1, group=groupShortDMA, display=display.none, inline="s3", tooltip="Lookback length for the fast MA calculation.")
+dktLineWShort    = input.int(2, "Width", minval=1, maxval=5, group=groupShortDMA, display=display.none, inline="s3", tooltip="Plot line width for the Fast MA.")
+
+// Long DMA (compact layout)
+dktShowLongLine  = input.bool(true, "Show Slow MA", group=groupLongDMA, display=display.none, inline="l1", tooltip="Toggle plotting of the Slow MA line.")
+long_type        = input.string("Kalman", "Type", options=["Kalman","EMA","MA"], group=groupLongDMA, display=display.none, inline="l2", tooltip="Averaging method for the slow MA.")
+long_tf          = input.timeframe("", "Timeframe", group=groupLongDMA, display=display.none, inline="l2", tooltip="Optional higher timeframe source for the slow MA (blank = chart timeframe).")
+long_len         = input.int(150, "Length", minval=1, group=groupLongDMA, display=display.none, inline="l3", tooltip="Lookback length for the slow MA calculation.")
+dktLineWLong     = input.int(2, "Width", minval=1, maxval=5, group=groupLongDMA, display=display.none, inline="l3", tooltip="Plot line width for the slow MA.")
+
+// Visuals (compact layout)
+dktShowFill   = input.bool(true, "Highlighter Fill", group=groupDKTViz, display=display.none, inline="viz1", tooltip="Enable/disable the vertical highlighter fill between DMAs.")
+dktFillTransp = input.int(75, "Fill %", minval=0, maxval=100, group=groupDKTViz, display=display.none, inline="viz1", tooltip="Transparency for the highlighter fill (0 = opaque, 100 = invisible).")
+upper_col     = input.color(#13bd6e, "Uptrend", group=groupDKTViz, display=display.none, inline="viz2", tooltip="Color used when trend is up.")
+lower_col     = input.color(#af0d4b, "Downtrend", group=groupDKTViz, display=display.none, inline="viz2", tooltip="Color used when trend is down.")
+
+// Bar coloring (compact layout)
+dktBarOn         = input.bool(true, "Color Candles", group=groupDKTBar, display=display.none, inline="bar1", tooltip="Enable/disable coloring of candle bodies/wicks/borders by trend.")
+dktEntryBarHLOn  = input.bool(true, "Highlight Entries", group=groupDKTBar, display=display.none, inline="bar1", tooltip="If on, entry candles are highlighted with the entry color.")
+dktBarUpCol      = input.color(#13bd6e, "Long", group=groupDKTBar, display=display.none, inline="bar2", tooltip="Candle color when trend is long.")
+dktBarDownCol    = input.color(#af0d4b, "Short", group=groupDKTBar, display=display.none, inline="bar2", tooltip="Candle color when trend is short.")
+dktBarNeutralCol = input.color(color.gray, "Neutral", group=groupDKTBar, display=display.none, inline="bar2", tooltip="Candle color when trend is neutral/unknown.")
+dktEntryConColor = input.color(color.aqua, "Entry", group=groupDKTBar, display=display.none, inline="bar2", tooltip="Highlight color used on entry/continuation candles.")
+
+// Zones (compact layout)
+dktBoxesOn               = input.bool(true, "Show Zones", group=groupDKTBoxes, display=display.none, inline="z1", tooltip="Toggle plotting of S/R zones.")
+dktBoxesLookbackSessions = input.int(2, "Lookback", minval=1, maxval=100, group=groupDKTBoxes, display=display.none, inline="z2", tooltip="Number of prior sessions to search for S/R zones.")
+dktBoxesExtendDir        = input.string("Both", "Extend", options=["Right","Left","Both","None"], group=groupDKTBoxes, display=display.none, inline="z2", tooltip="Extension direction for zone lines.")
+dktZoneLineWidth         = input.int(1, "Width", minval=1, maxval=5, group=groupDKTBoxes, display=display.none, inline="z3", tooltip="Line width for zone boundaries.")
+dktZoneTransp            = input.int(85, "Fill %", minval=0, maxval=100, group=groupDKTBoxes, display=display.none, inline="z3", tooltip="Zone fill transparency (0 = opaque, 100 = invisible).")
+dktZoneLowBaseCol  = input.color(#13bd6e, "Low Base", group=groupDKTBoxes, display=display.none, inline="z4", tooltip="Base color for a LOW zone that can flip price UP.")
+dktZoneHighBaseCol = input.color(#af0d4b, "High Base", group=groupDKTBoxes, display=display.none, inline="z4", tooltip="Base color for a HIGH zone that can flip price DOWN.")
+dktZoneAboveCol    = input.color(#13bd6e, "Above Px", group=groupDKTBoxes, display=display.none, inline="z4", tooltip="Zone color when the zone is above current price.")
+dktZoneBelowCol    = input.color(#af0d4b, "Below Px", group=groupDKTBoxes, display=display.none, inline="z4", tooltip="Zone color when the zone is below current price.")
+dktMergeZones = input.bool(true, "Merge Nearby", group=groupDKTBoxes, display=display.none, inline="z5", tooltip="Merge stacked/nearby zones into a single combined zone.")
+dktMergeATRx  = input.float(3, "ATR", minval=0.0, step=0.05, group=groupDKTBoxes, display=display.none, inline="z5", tooltip="Merge threshold measured in multiples of ATR.")
+
+// Labels (compact layout)
+dktShortLblOn   = input.bool(true, "Short", group=groupDKTLabels, display=display.none, inline="lab1", tooltip="Show label for the Short DMA.")
+dktLongLblOn    = input.bool(true, "Long",  group=groupDKTLabels, display=display.none, inline="lab1", tooltip="Show label for the Long DMA.")
+dktLblNameOn    = input.bool(false, "Name/Len", group=groupDKTLabels, display=display.none, inline="lab1", tooltip="Include DMA name/length on labels.")
+dktLblPriceOn   = input.bool(false, "Price",    group=groupDKTLabels, display=display.none, inline="lab1", tooltip="Include current price on labels.")
+dktLblSlopeOn   = input.bool(true, "Slope %", group=groupDKTLabels, display=display.none, inline="lab1", tooltip="Display slope percentage on labels.")
+dktLblSlopeWord = input.bool(false, "Add 'slope'", group=groupDKTLabels, display=display.none, inline="lab1", tooltip="Append the word 'slope' to the slope value on labels.")
+dktLblSizeStr   = input.string("Tiny", "Size", options=["Tiny","Small","Normal","Large","Huge"], group=groupDKTLabels, display=display.none, inline="lab3", tooltip="Label size preset.")
+
+// Entries (compact layout)
+dktArrowsOn         = input.bool(true,  "Crosses", group=groupDKTEntry, display=display.none, inline="ent1", tooltip="Show Golden and Death Cross labels.")
+dktEntryArrowsOn    = input.bool(true,  "Entry Arrows", group=groupDKTEntry, display=display.none, inline="ent1", tooltip="Show entry arrow labels.")
+dktEntryPriceOn     = input.bool(true,  "Entry Price", group=groupDKTEntry, display=display.none, inline="ent1", tooltip="Show entry price labels")
+retest_sig          = input.bool(false, "Zone Retests", group=groupDKTEntry, display=display.none, inline="ent1", tooltip="Show Zone Retest Labels.")
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Helpers
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+f_lblSize(_s) =>
+    _s == "Tiny" ? size.tiny : _s == "Small" ? size.small : _s == "Normal" ? size.normal : _s == "Large" ? size.large : size.huge
+
+f_intPctStr(_v) =>
+    v = nz(_v, 0.0)
+    r = math.round(v)
+    r == 0 ? "0" : str.tostring(r)
+
+f_anglePct_now(_series) =>
+    now  = _series
+    prev = _series[1]
+    mt   = syminfo.mintick
+    na(now) or na(prev) or mt == 0.0 ? 0.0 :
+         (math.atan((now - prev) / mt) / (math.pi / 2)) * 100.0
+
+f_buildLabel(_len, _val, _anglePct, _nameOn, _priceOn, _slopeOn, _slopeWord, _nameTag) =>
+    string namePart  = _nameOn  ? (str.tostring(_len) + " " + _nameTag) : ""
+    string pricePart = _priceOn ? ("$" + str.tostring(_val, format.mintick)) : ""
+    string leftSide =
+         namePart != "" and pricePart != "" ? (namePart + " / " + pricePart) :
+         namePart != "" ? namePart :
+         pricePart
+    string slopePart = ""
+    if _slopeOn
+        if str.length(leftSide) > 0
+            slopePart := (_slopeWord ? " | slope " : " | ") + f_intPctStr(_anglePct) + "%"
+        else
+            slopePart := (_slopeWord ? "slope " : "") + f_intPctStr(_anglePct) + "%"
+    (leftSide + slopePart)
+
+// Helper to place cross labels on a DMA with a small offset from the line
+f_placeCrossLbl(_y, _txt, _isUp, _pad) =>
+    if not na(_y)
+        float adj = _isUp ? _pad : -_pad
+        labelStyle = _isUp ? label.style_label_up : label.style_label_down
+        label.new(
+            bar_index,  // plot exactly on the cross bar
+            _y + adj,
+            _txt,
+            yloc=yloc.price,
+            color=color.new(color.black, 100),
+            textcolor=_isUp ? color.new(#FFD700, 0) : color.red,
+            style=labelStyle,
+            size=size.normal)
+
+// ATR
+float dktATR = ta.atr(200) * 0.5
+
+// Kalman + avg helpers
+kalman_filter(src, length, R = 0.01, Q = 0.1) =>
+    var float estimate    = na
+    var float error_est   = 1.0
+    var float error_meas  = R * (length)
+    var float kalman_gain = 0.0
+    var float prediction  = na
+    if na(estimate)
+        estimate := src[1]
+    prediction   := estimate
+    kalman_gain  := error_est / (error_est + error_meas)
+    estimate     := prediction + kalman_gain * (src - prediction)
+    error_est    := (1 - kalman_gain) * error_est + Q / (length)
+    estimate
+
+f_getAvgByType(_type, _src, _len) =>
+    _type == "EMA" ? ta.ema(_src, _len) :
+     _type == "MA" ? ta.sma(_src, _len) :
+     kalman_filter(_src, _len)
+
+f_getConvertedDense(_tf, _src, _len, _type) =>
+    avg = f_getAvgByType(_type, _src, _len)
+    _tf == "" ? avg : request.security(syminfo.tickerid, _tf, avg, lookahead=barmerge.lookahead_on)
+
+f_getConvertedSparse(_tf, _src, _len, _type) =>
+    avg = f_getAvgByType(_type, _src, _len)
+    if not i_mtf_mode
+        _tf == "" ? avg : request.security(syminfo.tickerid, _tf, avg)
+    else
+        if _tf == ""
+            avg
+        else
+            [m, b] = request.security(syminfo.tickerid, _tf, [avg, bar_index])
+            var int lastBar = na
+            lastBar := na(lastBar[1]) or b > lastBar[1] ? b : lastBar[1]
+            (lastBar != lastBar[1] or barstate.islast) ? m : na
+
+f_getConvertedStep(_tf, _src, _len, _type) =>
+    avg = f_getAvgByType(_type, _src, _len)
+    if _tf == "" or not i_mtf_mode
+        avg
+    else
+        [m, b] = request.security(syminfo.tickerid, _tf, [avg, bar_index])
+        var float held = na
+        var int   lastB = na
+        newTick = na(lastB) or b > lastB
+        if newTick
+            held := m
+            lastB := b
+        held
+
+// Series
+short_dma_dns  = dktEnable ? f_getConvertedDense(short_tf, close, short_len, short_type) : na
+long_dma_dns   = dktEnable ? f_getConvertedDense(long_tf,  close, long_len,  long_type)  : na
+short_dma_vis  = dktEnable ? f_getConvertedSparse(short_tf, close, short_len, short_type) : na
+long_dma_vis   = dktEnable ? f_getConvertedSparse(long_tf,  close, long_len,  long_type)  : na
+short_dma_step = dktEnable ? f_getConvertedStep(short_tf, close, short_len, short_type) : na
+long_dma_step  = dktEnable ? f_getConvertedStep(long_tf,  close, long_len,  long_type)  : na
+
+// Trend + flips (dense)
+bool trend_up_now = dktEnable and short_dma_dns > long_dma_dns
+bool flipUp       = dktEnable and trend_up_now and not trend_up_now[1]
+bool flipDn       = dktEnable and trend_up_now[1] and not trend_up_now
+
+// Visual slope/color
+var bool trend_up_smoothed = trend_up_now
+bool s_new = dktEnable and not na(short_dma_vis) and na(short_dma_vis[1])
+bool l_new = dktEnable and not na(long_dma_vis)  and na(long_dma_vis[1])
+if not i_mtf_mode or (short_tf == "" and long_tf == "")
+    trend_up_smoothed := trend_up_now
+else if s_new or l_new
+    trend_up_smoothed := trend_up_now
+
+short_slope_dense = dktEnable and short_dma_dns > nz(short_dma_dns[2], short_dma_dns)
+var float short_last_sparse = na
+var bool  shortVizSlopeUp   = true
+if s_new and not na(short_dma_vis)
+    shortVizSlopeUp := na(short_last_sparse) ? true : (short_dma_vis >= short_last_sparse)
+    short_last_sparse := short_dma_vis
+bool  short_slope_for_color = (i_mtf_mode and short_tf != "") ? shortVizSlopeUp : short_slope_dense
+
+color short_line_col = short_slope_for_color ? upper_col : lower_col
+color trend_col      = trend_up_smoothed ? upper_col : lower_col
+
+// Plots + fill
+p1  = plot(dktEnable and dktLinesAndFillOn and dktShowShortLine ? short_dma_vis : na, title="Short DMA", color=short_line_col, linewidth=dktLineWShort)
+p2  = plot(dktEnable and dktLinesAndFillOn and dktShowLongLine  ? long_dma_vis  : na, title="Long DMA",  color=trend_col,     linewidth=dktLineWLong)
+p1h = plot(dktEnable and dktLinesAndFillOn ? short_dma_step : na, title="Short DMA (fill anchor)", color=color.new(color.gray, 100), display=display.none)
+p2h = plot(dktEnable and dktLinesAndFillOn ? long_dma_step  : na, title="Long DMA (fill anchor)",  color=color.new(color.gray, 100), display=display.none)
+fill(p1h, p2h, short_dma_step, long_dma_step, na, (dktLinesAndFillOn and dktShowFill) ? color.new(trend_col, dktFillTransp) : na)
+
+// Entries â€” strict gating (continuations only in trend direction)
+crossUp_raw = dktEnable and not na(short_dma_step) and not na(short_dma_step[1]) and close[1] < short_dma_step[1] and close > short_dma_step
+crossDn_raw = dktEnable and not na(short_dma_step) and not na(short_dma_step[1]) and close[1] > short_dma_step[1] and close < short_dma_step
+bool entryUpT = dktEnable and trend_up_now     and crossUp_raw
+bool entryDnT = dktEnable and not trend_up_now and crossDn_raw
+int  entryUpTrend = entryUpT ? 1 : 0
+int  entryDnTrend = entryDnT ? 1 : 0
+
+// Flip arrow labels (restored)
+if dktEnable and dktArrowsOn
+    // Single label on fast MA with minimal offset
+    float flipPad = math.max(ta.tr * 1, syminfo.mintick * 8)
+
+    if flipUp
+        // Golden below the MA
+        f_placeCrossLbl(short_dma_step, "✝️\nGolden", true, flipPad * -1)
+
+    if flipDn
+        // Death above the MA
+        f_placeCrossLbl(short_dma_step, "✝️\nDeath", false, flipPad * -1)
+
+// Candle paint
+color _barCol = na
+if dktEnable and dktBarOn
+    _barCol := trend_up_now and short_slope_dense ? dktBarUpCol :
+               (not trend_up_now and not short_slope_dense ? dktBarDownCol : dktBarNeutralCol)
+bool dktFlip = flipUp or flipDn
+color _entryHL = na
+if dktEnable and dktEntryBarHLOn
+    _entryHL := ((entryUpT or entryDnT) or dktFlip) ? dktEntryConColor : na
+color _bodyColor = na(_entryHL) ? _barCol : _entryHL
+barcolor(dktBarOn and dktEnable ? _bodyColor : na)
+plotcandle(open, high, low, close, color=color.new(_barCol, 100), wickcolor=_barCol, bordercolor=_barCol)
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ZONES â€” example logic (bar_index anchors) + strict lookback + merge no-stack
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Day/session tracking for zone lookback
+int   _dayChangeRaw = ta.change(time("D"))
+int   _dayChange    = na(_dayChangeRaw) ? 0 : _dayChangeRaw
+bool  _newDay       = _dayChange != 0
+float _dayId        = ta.cum(_newDay ? 1.0 : 0.0)
+int   _currDayId    = int(_dayId)
+
+int   _keepDays     = dktBoxesLookbackSessions - 1
+int   _minDayId     = _currDayId - _keepDays
+
+// Arrays (bar_index anchors like your example)
+var line[]     _zoneTop   = array.new_line()
+var line[]     _zoneBot   = array.new_line()
+var linefill[] _zoneFill  = array.new_linefill()
+var int[]      _zoneDayId = array.new_int()
+var int[]      _zoneLeft  = array.new_int()   // bar_index anchor (left)
+var bool[]     _zoneIsLow = array.new_bool()
+var float[]    _zoneTopY  = array.new_float()
+var float[]    _zoneBotY  = array.new_float()
+
+// Day â†’ EndIndex map (for Extend=None clamp)
+var int[] _dayIds  = array.new_int()
+var int[] _dayEnds = array.new_int()
+
+if _newDay
+    int prevId = _currDayId - 1
+    if prevId >= 0
+        int pos = na
+        int dn  = array.size(_dayIds)
+        if dn > 0
+            for j = dn - 1 to 0
+                if array.get(_dayIds, j) == prevId
+                    pos := j
+                    break
+        if na(pos)
+            array.push(_dayIds, prevId)
+            array.push(_dayEnds, bar_index - 1)
+        else
+            array.set(_dayEnds, pos, bar_index - 1)
+
+f_getDayEndIdx(_d) =>
+    if _d == _currDayId
+        bar_index
+    else
+        int ee = na
+        int n  = array.size(_dayIds)
+        for k = n - 1 to 0
+            if array.get(_dayIds, k) == _d
+                ee := array.get(_dayEnds, k)
+                break
+        na(ee) ? bar_index : ee
+
+// Overlap test for post-pass coalesce
+f_overlapOrNear(aTop, aBot, bTop, bBot, thr) =>
+    overlap = not (aBot > bTop or aTop < bBot)
+    nearAB  = math.abs(aTop - bTop) <= thr or math.abs(aBot - bBot) <= thr
+    crossAB = math.abs(aBot - bTop) <= thr or math.abs(aTop - bBot) <= thr
+    overlap or nearAB or crossAB
+
+// Merge NEW zone into an existing one (first hit, most recent-first)
+f_tryMergeZone(_topY, _botY, _isLow) =>
+    if not dktMergeZones
+        na
+    else
+        float thr = math.max(dktMergeATRx * dktATR, syminfo.mintick)
+        int sz = array.size(_zoneTop)
+        int hit = na
+        if sz > 0
+            for i = sz - 1 to 0
+                float eTop = array.get(_zoneTopY, i)
+                float eBot = array.get(_zoneBotY, i)
+                if f_overlapOrNear(_topY, _botY, eTop, eBot, thr)
+                    hit := i
+                    break
+        if na(hit)
+            na
+        else
+            float nTop = math.max(_topY, array.get(_zoneTopY, hit))
+            float nBot = math.min(_botY, array.get(_zoneBotY, hit))
+            array.set(_zoneTopY, hit, nTop)
+            array.set(_zoneBotY, hit, nBot)
+            // keep earliest left anchor
+            array.set(_zoneLeft, hit, math.min(array.get(_zoneLeft, hit), bar_index))
+            line lt = array.get(_zoneTop, hit)
+            line lb = array.get(_zoneBot, hit)
+            line.set_y1(lt, nTop), line.set_y2(lt, nTop)
+            line.set_y1(lb, nBot), line.set_y2(lb, nBot)
+            hit
+
+// Latest indices for optional retest
+var int latestLowIdx  = na
+var int latestHighIdx = na
+
+// Create zones on flips (two horizontal lines + linefill) â€” like your example
+if dktEnable
+    if flipUp and dktBoxesOn
+        float topY = low + dktATR
+        float botY = low
+        int merged = f_tryMergeZone(topY, botY, true)
+        if na(merged)
+            line lt = line.new(bar_index, topY, bar_index, topY, xloc=xloc.bar_index, extend=extend.none, color=color.new(dktZoneLowBaseCol, dktZoneTransp), width=dktZoneLineWidth)
+            line lb = line.new(bar_index, botY, bar_index, botY, xloc=xloc.bar_index, extend=extend.none, color=color.new(dktZoneLowBaseCol, dktZoneTransp), width=dktZoneLineWidth)
+            linefill lf = linefill.new(lt, lb, color.new(dktZoneLowBaseCol, dktZoneTransp))
+            array.push(_zoneTop,   lt)
+            array.push(_zoneBot,   lb)
+            array.push(_zoneFill,  lf)
+            array.push(_zoneDayId, _currDayId)
+            array.push(_zoneLeft,  bar_index)
+            array.push(_zoneIsLow, true)
+            array.push(_zoneTopY,  topY)
+            array.push(_zoneBotY,  botY)
+            latestLowIdx := array.size(_zoneTop) - 1
+        else
+            latestLowIdx := merged
+
+    if flipDn and dktBoxesOn
+        float topY = high
+        float botY = high - dktATR
+        int merged = f_tryMergeZone(topY, botY, false)
+        if na(merged)
+            line lt = line.new(bar_index, topY, bar_index, topY, xloc=xloc.bar_index, extend=extend.none, color=color.new(dktZoneHighBaseCol, dktZoneTransp), width=dktZoneLineWidth)
+            line lb = line.new(bar_index, botY, bar_index, botY, xloc=xloc.bar_index, extend=extend.none, color=color.new(dktZoneHighBaseCol, dktZoneTransp), width=dktZoneLineWidth)
+            linefill lf = linefill.new(lt, lb, color.new(dktZoneHighBaseCol, dktZoneTransp))
+            array.push(_zoneTop,   lt)
+            array.push(_zoneBot,   lb)
+            array.push(_zoneFill,  lf)
+            array.push(_zoneDayId, _currDayId)
+            array.push(_zoneLeft,  bar_index)
+            array.push(_zoneIsLow, false)
+            array.push(_zoneTopY,  topY)
+            array.push(_zoneBotY,  botY)
+            latestHighIdx := array.size(_zoneTop) - 1
+        else
+            latestHighIdx := merged
+
+// Maintain zones each bar: prune by lookback + extend + dynamic color
+if dktEnable and dktBoxesOn
+    bool extRight = dktBoxesExtendDir == "Right" or dktBoxesExtendDir == "Both"
+    bool extLeft  = dktBoxesExtendDir == "Left"  or dktBoxesExtendDir == "Both"
+    bool extNone  = dktBoxesExtendDir == "None"
+
+    // Post-pass coalesce (no stacking when Merge is ON)
+    if dktMergeZones
+        float thrP = math.max(dktMergeATRx * dktATR, syminfo.mintick)
+        int nZ = array.size(_zoneTop)
+        if nZ > 1
+            for a = nZ - 1 to 0
+                if a < array.size(_zoneTop)
+                    float aTop = array.get(_zoneTopY, a)
+                    float aBot = array.get(_zoneBotY, a)
+                    if a > 0
+                        for b = a - 1 to 0
+                            if b < array.size(_zoneTop)
+                                float bTop = array.get(_zoneTopY, b)
+                                float bBot = array.get(_zoneBotY, b)
+                                if f_overlapOrNear(aTop, aBot, bTop, bBot, thrP)
+                                    float mT = math.max(aTop, bTop)
+                                    float mB = math.min(aBot, bBot)
+                                    int   mL = math.min(array.get(_zoneLeft, a), array.get(_zoneLeft, b))
+                                    array.set(_zoneTopY, b, mT)
+                                    array.set(_zoneBotY, b, mB)
+                                    array.set(_zoneLeft, b, mL)
+                                    line ltB = array.get(_zoneTop, b)
+                                    line lbB = array.get(_zoneBot, b)
+                                    line.set_y1(ltB, mT), line.set_y2(ltB, mT)
+                                    line.set_y1(lbB, mB), line.set_y2(lbB, mB)
+                                    // delete a
+                                    linefill lfA = array.get(_zoneFill, a)
+                                    if not na(lfA)
+                                        linefill.delete(lfA)
+                                    line ltA = array.get(_zoneTop, a)
+                                    line lbA = array.get(_zoneBot, a)
+                                    if not na(ltA)
+                                        line.delete(ltA)
+                                    if not na(lbA)
+                                        line.delete(lbA)
+                                    array.remove(_zoneTop, a)
+                                    array.remove(_zoneBot, a)
+                                    array.remove(_zoneFill, a)
+                                    array.remove(_zoneDayId, a)
+                                    array.remove(_zoneLeft, a)
+                                    array.remove(_zoneIsLow, a)
+                                    array.remove(_zoneTopY, a)
+                                    array.remove(_zoneBotY, a)
+                                    // shift latest indices safely
+                                    if not na(latestLowIdx)
+                                        latestLowIdx  := latestLowIdx  > a ? latestLowIdx  - 1 : (latestLowIdx  == a ? na : latestLowIdx)
+                                    if not na(latestHighIdx)
+                                        latestHighIdx := latestHighIdx > a ? latestHighIdx - 1 : (latestHighIdx == a ? na : latestHighIdx)
+                                    break
+
+    int sz = array.size(_zoneTop)
+    if sz > 0
+        for i = sz - 1 to 0
+            int dId = array.get(_zoneDayId, i)
+
+            // Prune by lookback
+            if dId < _minDayId
+                if not na(latestLowIdx)
+                    latestLowIdx  := latestLowIdx  > i ? latestLowIdx  - 1 : (latestLowIdx  == i ? na : latestLowIdx)
+                if not na(latestHighIdx)
+                    latestHighIdx := latestHighIdx > i ? latestHighIdx - 1 : (latestHighIdx == i ? na : latestHighIdx)
+                line lt = array.get(_zoneTop, i)
+                line lb = array.get(_zoneBot, i)
+                linefill lf = array.get(_zoneFill, i)
+                if not na(lf)
+                    linefill.delete(lf)
+                if not na(lt)
+                    line.delete(lt)
+                if not na(lb)
+                    line.delete(lb)
+                array.remove(_zoneTop, i)
+                array.remove(_zoneBot, i)
+                array.remove(_zoneFill, i)
+                array.remove(_zoneDayId, i)
+                array.remove(_zoneLeft, i)
+                array.remove(_zoneIsLow, i)
+                array.remove(_zoneTopY, i)
+                array.remove(_zoneBotY, i)
+            else
+                // Keep + extend
+                line lt = array.get(_zoneTop, i)
+                line lb = array.get(_zoneBot, i)
+                linefill lf = array.get(_zoneFill, i)
+                int  lX = array.get(_zoneLeft, i)
+                float topY = array.get(_zoneTopY, i)
+                float botY = array.get(_zoneBotY, i)
+                bool isLow = array.get(_zoneIsLow, i)
+
+                // Flat Y + dynamic color
+                line.set_y1(lt, topY), line.set_y2(lt, topY)
+                line.set_y1(lb, botY), line.set_y2(lb, botY)
+                color baseCol = isLow ? dktZoneLowBaseCol : dktZoneHighBaseCol
+                color currCol = close > topY ? dktZoneAboveCol : close < botY ? dktZoneBelowCol : baseCol
+                color currColT = color.new(currCol, dktZoneTransp)
+                line.set_color(lt, currColT)
+                line.set_color(lb, currColT)
+                if not na(lf)
+                    linefill.set_color(lf, color.new(currCol, dktZoneTransp))
+
+                // Safe anchors (avoid "x1 too far" by using extend when very old)
+                int MAX_BACK = 20000  // safe window; increase if needed
+                int dx = bar_index - lX
+                if dx <= MAX_BACK
+                    line.set_x1(lt, lX), line.set_x2(lt, bar_index)
+                    line.set_x1(lb, lX), line.set_x2(lb, bar_index)
+                else
+                    // draw from a safe window and extend left so it looks identical
+                    int leftSafe = bar_index - MAX_BACK
+                    line.set_x1(lt, leftSafe), line.set_x2(lt, bar_index)
+                    line.set_x1(lb, leftSafe), line.set_x2(lb, bar_index)
+                    line.set_extend(lt, extend.left)
+                    line.set_extend(lb, extend.left)
+
+                // Clamp to session end when Extend=None
+                if dktBoxesExtendDir == "None"
+                    int eX = f_getDayEndIdx(dId)
+                    line.set_extend(lt, extend.none)
+                    line.set_extend(lb, extend.none)
+                    line.set_x2(lt, eX)
+                    line.set_x2(lb, eX)
+                else
+                    bool createdThisBar = (bar_index == lX)
+                    if createdThisBar
+                        line.set_extend(lt, extend.none)
+                        line.set_extend(lb, extend.none)
+                    else
+                        if dktBoxesExtendDir == "Both"
+                            line.set_extend(lt, extend.both)
+                            line.set_extend(lb, extend.both)
+                        else if dktBoxesExtendDir == "Right"
+                            line.set_extend(lt, extend.right)
+                            line.set_extend(lb, extend.right)
+                        else if dktBoxesExtendDir == "Left"
+                            line.set_extend(lt, extend.left)
+                            line.set_extend(lb, extend.left)
+
+// Retest signals (optional)
+if dktEnable and dktBoxesOn and retest_sig
+    int sz2 = array.size(_zoneTop)
+    if not na(latestHighIdx)
+        int idxU = latestHighIdx
+        if sz2 > 0 and idxU >= 0 and idxU < sz2
+            float uBot = array.get(_zoneBotY, idxU)
+            if high < uBot and high[1] >= uBot
+                label.new(bar_index - 1, high[1], "x", color=color.new(color.black, 100), textcolor=lower_col, style=label.style_label_down, size=size.normal)
+    if not na(latestLowIdx)
+        int idxL = latestLowIdx
+        if sz2 > 0 and idxL >= 0 and idxL < sz2
+            float lTop = array.get(_zoneTopY, idxL)
+            if low > lTop and low[1] <= lTop
+                label.new(bar_index - 1, low[1],  "+", color=color.new(color.black, 100), textcolor=upper_col, style=label.style_label_up, size=size.normal)
+
+// Labels
+var label dktShortLab = na
+var label dktLongLab  = na
+if dktEnable
+    float aShort = f_anglePct_now(short_dma_dns)
+    float aLong  = f_anglePct_now(long_dma_dns)
+    string shortName = short_type == "Kalman" ? "kema" : short_type == "EMA" ? "ema" : "ma"
+    string longName  = long_type  == "Kalman" ? "kema" : long_type  == "EMA" ? "ema" : "ma"
+    string txtShort = f_buildLabel(short_len, short_dma_step, aShort, dktLblNameOn, dktLblPriceOn, dktLblSlopeOn, dktLblSlopeWord, shortName)
+    string txtLong  = f_buildLabel(long_len,  long_dma_step,  aLong,  dktLblNameOn, dktLblPriceOn, dktLblSlopeOn, dktLblSlopeWord, longName)
+    if barstate.islast
+        if not na(dktShortLab)
+            label.delete(dktShortLab)
+        if not na(dktLongLab)
+            label.delete(dktLongLab)
+        if dktShortLblOn and not na(short_dma_step) and dktLinesAndFillOn
+            dktShortLab := label.new(x=bar_index, y=short_dma_step, text=txtShort, color=color.new(color.black, 100), textcolor=short_line_col, style=label.style_label_left, textalign=text.align_left, yloc=yloc.price, size=f_lblSize(dktLblSizeStr))
+        if dktLongLblOn and not na(long_dma_step) and dktLinesAndFillOn
+            dktLongLab := label.new(x=bar_index, y=long_dma_step, text=txtLong, color=color.new(color.black, 100), textcolor=trend_col, style=label.style_label_left, textalign=text.align_left, yloc=yloc.price, size=f_lblSize(dktLblSizeStr))
+else
+    if not na(dktShortLab)
+        label.delete(dktShortLab), dktShortLab := na
+    if not na(dktLongLab)
+        label.delete(dktLongLab),  dktLongLab := na
+
+// Entry arrows / letters
+plotarrow(dktEnable and dktEntryArrowsOn ? entryUpTrend : na,  title="DKT Conservative Up Entry Arrow",   colorup=upper_col,  maxheight=30, minheight=30)
+plotarrow(dktEnable and dktEntryArrowsOn ? -entryDnTrend : na, title="DKT Conservative Down Entry Arrow", colordown=lower_col, maxheight=30, minheight=30)
+float tr = ta.tr
+
+// Price text on entry signals
+if dktEnable and dktEntryPriceOn
+    string entryPriceTxt = "$" + str.tostring(close, "#.00")
+    float entryPad = math.max(tr, syminfo.mintick * 8)
+    if entryUpT
+        label.new(bar_index, low - entryPad, entryPriceTxt, style=label.style_label_up, yloc=yloc.price,
+                  color=color.new(color.black, 100), textcolor=upper_col, size=size.small)
+    if entryDnT
+        label.new(bar_index, high + entryPad, entryPriceTxt, style=label.style_label_down, yloc=yloc.price,
+                  color=color.new(color.black, 100), textcolor=lower_col, size=size.small)
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ALERT: DTZ Flip + New Zone / Level
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+bool dktNewZoneAlert = dktEnable and dktBoxesOn and (flipUp or flipDn)
+alertcondition( dktNewZoneAlert, title   = "DTZ New Level / Zone Formed", message = "Dix$on DTZ: DMA cross and S/R zone level formed.")
+
+
+
