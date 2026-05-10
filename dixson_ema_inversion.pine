@@ -97,8 +97,8 @@ f_getAvg(string maType, series float src, int len) =>
 f_getConverted(string tf, series float src, int len, string maType, bool mtfMode) =>
     avg = f_getAvg(maType, src, len)
     if mtfMode
-        m = request.security(syminfo.tickerid, tf, avg)
-        isNewHtfBar = request.security(syminfo.tickerid, tf, bar_index != bar_index[1])
+        [m, b] = request.security(syminfo.tickerid, tf, [avg, bar_index])
+        isNewHtfBar = b != b[1]
         isNewHtfBar or barstate.islast ? m : na
     else
         tf == "" ? avg : request.security(syminfo.tickerid, tf, avg)
