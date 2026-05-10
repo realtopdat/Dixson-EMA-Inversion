@@ -217,15 +217,16 @@ else if shortFillState < longFillState
 fillColor = fillBullState ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
 fill(longFillRefPlot, shortFillRefPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
-// EMA crossover labels (Golden/Death) using Dix$on Levels style.
-emaFlipUp = ta.crossover(shortEmaLogic, logicEma)
-emaFlipDn = ta.crossunder(shortEmaLogic, logicEma)
+// EMA crossover labels (Golden/Death) using displayed EMA states so HTF+MTF smoothing
+// only fires when the smoothed EMA lines themselves actually cross.
+emaFlipUp = ta.crossover(shortFillState, longFillState)
+emaFlipDn = ta.crossunder(shortFillState, longFillState)
 crossPad = math.max(ta.tr, syminfo.mintick * 8)
 if showEma and showEmaCrossLabels
     if emaFlipUp
-        f_placeCrossLbl(shortEmaLogic, "✝️\nGolden", true, crossPad * -1)
+        f_placeCrossLbl(shortFillState, "✝️\nGolden", true, crossPad * -1)
     if emaFlipDn
-        f_placeCrossLbl(shortEmaLogic, "✝️\nDeath", false, crossPad * -1)
+        f_placeCrossLbl(shortFillState, "✝️\nDeath", false, crossPad * -1)
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
