@@ -300,9 +300,11 @@ labelSz = f_labelSize(entryLabelSizeInput)
 entryOffset = math.max(syminfo.mintick * 10.0, atrValue * entryMarkerOffsetAtrMult)
 
 if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and bar_index == latestBearIfvgBar
+    touchWindowStart = latestBearFvgBar - emaTouchBarsBefore
+    touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBearIfvgBar
     confirmBullClose = close > logicEma
     trendBullOk = shortEmaLogic > logicEma
-    if confirmBullClose and trendBullOk
+    if touchWindowOk and confirmBullClose and trendBullOk
         latestBearSignalDone := true
         bullEntryAlert := true
         if showEntries
@@ -314,9 +316,11 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
                 array.push(bullEntryFvgMidlines, entryFvgMid)
 
 if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and bar_index == latestBullIfvgBar
+    touchWindowStart = latestBullFvgBar - emaTouchBarsBefore
+    touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBullIfvgBar
     confirmBearClose = close < logicEma
     trendBearOk = shortEmaLogic < logicEma
-    if confirmBearClose and trendBearOk
+    if touchWindowOk and confirmBearClose and trendBearOk
         latestBullSignalDone := true
         bearEntryAlert := true
         if showEntries
