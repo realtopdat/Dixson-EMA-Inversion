@@ -17,6 +17,7 @@ string GROUP_ALERTS = "• Alerts ━━━━━━━━━━━━━━━�
 //━━━━━━━━━━━━━━━━━━━━
 showEma = input.bool(true, "Show EMAs", inline="MASTER_1", group=GROUP_MASTER, tooltip="Master display toggle for EMA lines and EMA spread fill. Disable to hide EMA visuals only.", display=display.none)
 showEntries = input.bool(true, "Show Entries", inline="MASTER_1", group=GROUP_MASTER, display=display.none)
+showEmaCrossLabels = input.bool(true, "Show EMA Cross Labels", inline="MASTER_1", group=GROUP_MASTER, display=display.none)
 enableAlerts = input.bool(true, "Enable Alerts", inline="MASTER_1", group=GROUP_MASTER, display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
@@ -163,6 +164,21 @@ f_createEntryFvgVisual(int leftBar, float top, float bottom, color fvgColor, int
         mid = (top + bottom) * 0.5
         newEntryMid := line.new(leftBar, mid, bar_index, mid, color=midColor, style=f_midlineStyle(midStyle), extend=extend.none)
     [newEntryBox, newEntryMid]
+
+// Helper to place cross labels with Dix$on Levels styling.
+f_placeCrossLbl(float y, string txt, bool isUp, float pad) =>
+    if not na(y)
+        float adj = isUp ? pad : -pad
+        labelStyle = isUp ? label.style_label_up : label.style_label_down
+        label.new(
+             bar_index,
+             y + adj,
+             txt,
+             yloc=yloc.price,
+             color=color.new(color.black, 100),
+             textcolor=isUp ? color.new(#FFD700, 0) : color.red,
+             style=labelStyle,
+             size=size.normal)
 //━━━━━━━━━━━━━━━━━━━━
 // Core Series
 //━━━━━━━━━━━━━━━━━━━━
@@ -200,6 +216,16 @@ else if shortFillState < longFillState
 
 fillColor = fillBullState ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
 fill(longFillRefPlot, shortFillRefPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
+
+// EMA crossover labels (Golden/Death) using Dix$on Levels style.
+emaFlipUp = ta.crossover(shortEmaLogic, logicEma)
+emaFlipDn = ta.crossunder(shortEmaLogic, logicEma)
+crossPad = math.max(ta.tr, syminfo.mintick * 8)
+if showEma and showEmaCrossLabels
+    if emaFlipUp
+        f_placeCrossLbl(shortEmaLogic, "✝️\nGolden", true, crossPad * -1)
+    if emaFlipDn
+        f_placeCrossLbl(shortEmaLogic, "✝️\nDeath", false, crossPad * -1)
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
