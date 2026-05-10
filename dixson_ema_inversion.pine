@@ -162,7 +162,12 @@ longFillState = nz(plotEma, plotEma[1])
 shortFillState = nz(shortEmaPlot, shortEmaPlot[1])
 longFillRefPlot = plot(showEma ? longFillState : na, "Long Fill Ref", color=color.new(color.white, 100), display=display.none)
 shortFillRefPlot = plot(showEma ? shortFillState : na, "Short Fill Ref", color=color.new(color.white, 100), display=display.none)
-fillColor = shortFillState >= longFillState ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
+var bool fillBullState = false
+if shortFillState > longFillState
+    fillBullState := true
+else if shortFillState < longFillState
+    fillBullState := false
+fillColor = fillBullState ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
 fill(longFillRefPlot, shortFillRefPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 //━━━━━━━━━━━━━━━━━━━━
