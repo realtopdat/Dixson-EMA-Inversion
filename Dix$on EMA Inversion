@@ -415,7 +415,7 @@ f_cleanupVisuals(bearEntryFvgBoxes, bearEntryFvgMidlines, entryDisplayCap)
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
 //━━━━━━━━━━━━━━━━━━━━
-alertcondition(enableAlerts and bullIfvgConfirmedAlert, "Bullish IFVG Confirmed", "Bearish FVG inverted to bullish IFVG.")
-alertcondition(enableAlerts and bearIfvgConfirmedAlert, "Bearish IFVG Confirmed", "Bullish FVG inverted to bearish IFVG.")
+alertcondition(enableAlerts and emaFlipUp, "Golden Cross", "Dix$on EMA Inversion: Golden cross detected.")
+alertcondition(enableAlerts and emaFlipDn, "Death Cross", "Dix$on EMA Inversion: Death cross detected.")
 alertcondition(enableAlerts and bullEntryAlert, "Bullish EMA Inversion Entry", "Bullish IFVG + EMA reclaim entry confirmed.")
 alertcondition(enableAlerts and bearEntryAlert, "Bearish EMA Inversion Entry", "Bearish IFVG + EMA rejection entry confirmed.")
