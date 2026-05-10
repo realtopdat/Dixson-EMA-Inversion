@@ -158,8 +158,20 @@ shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
 
 longPlot = plot(showEma ? plotEma : na, "Long EMA", color=longEmaColorDyn, linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short EMA", color=shortEmaColorDyn, linewidth=shortEmaWidth)
-fillColor = shortEmaPlot >= plotEma ? color.new(bullTrendColor, 85) : color.new(bearTrendColor, 85)
-fill(longPlot, shortPlot, color=showEma ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
+var float longFillHold = na
+var float shortFillHold = na
+longFillHold := na(plotEma) ? nz(longFillHold[1], logicEma) : plotEma
+shortFillHold := na(shortEmaPlot) ? nz(shortFillHold[1], shortEmaLogic) : shortEmaPlot
+
+bullLongPlot = plot(showEma ? longFillHold : na, "Bull Fill Long Ref", color=color.new(color.white, 100), display=display.none)
+bullShortPlot = plot(showEma ? shortFillHold : na, "Bull Fill Short Ref", color=color.new(color.white, 100), display=display.none)
+bearLongPlot = plot(showEma ? plotEma : na, "Bear Fill Long Ref", color=color.new(color.white, 100), display=display.none)
+bearShortPlot = plot(showEma ? shortEmaPlot : na, "Bear Fill Short Ref", color=color.new(color.white, 100), display=display.none)
+
+bullFillColor = shortFillHold >= longFillHold ? color.new(bullTrendColor, 85) : na
+bearFillColor = shortEmaPlot < plotEma ? color.new(bearTrendColor, 85) : na
+fill(bullLongPlot, bullShortPlot, color=showEma ? bullFillColor : na, title="Bull EMA Spread Fill", fillgaps=true)
+fill(bearLongPlot, bearShortPlot, color=showEma ? bearFillColor : na, title="Bear EMA Spread Fill", fillgaps=true)
 
 //━━━━━━━━━━━━━━━━━━━━
 // State Storage
