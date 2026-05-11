@@ -250,6 +250,7 @@ var bool latestBullIfvgConfirmed = false
 var int latestBullIfvgBar = na
 var bool latestBullSignalDone = false
 var box latestBullBox = na
+var line latestBullMidline = na
 
 var int latestBearFvgBar = na
 var float latestBearTop = na
@@ -259,6 +260,7 @@ var bool latestBearIfvgConfirmed = false
 var int latestBearIfvgBar = na
 var bool latestBearSignalDone = false
 var box latestBearBox = na
+var line latestBearMidline = na
 
 var bool bullIfvgConfirmedAlert = false
 var bool bearIfvgConfirmedAlert = false
@@ -296,10 +298,12 @@ if bullFvgFound
             newBox = box.new(bar_index - 2, fvgTop, rightEdge, fvgBottom, border_color=color.new(bullFvgColor, 0), bgcolor=color.new(bullFvgColor, fvgTransparency), extend=extend.none)
             array.push(bullBoxes, newBox)
             latestBullBox := newBox
+            latestBullMidline := na
             if showMidline
                 mid = (fvgTop + fvgBottom) * 0.5
                 newLine = line.new(bar_index - 2, mid, rightEdge, mid, color=midlineColor, style=f_midlineStyle(midlineStyleInput), extend=extend.none)
                 array.push(bullMidlines, newLine)
+                latestBullMidline := newLine
 
 if bearFvgFound
     fvgTop = low[2]
@@ -321,10 +325,12 @@ if bearFvgFound
             newBox = box.new(bar_index - 2, fvgTop, rightEdge, fvgBottom, border_color=color.new(bearFvgColor, 0), bgcolor=color.new(bearFvgColor, fvgTransparency), extend=extend.none)
             array.push(bearBoxes, newBox)
             latestBearBox := newBox
+            latestBearMidline := na
             if showMidline
                 mid = (fvgTop + fvgBottom) * 0.5
                 newLine = line.new(bar_index - 2, mid, rightEdge, mid, color=midlineColor, style=f_midlineStyle(midlineStyleInput), extend=extend.none)
                 array.push(bearMidlines, newLine)
+                latestBearMidline := newLine
 
 if extendFvgRight
     f_extendVisualsToBar(bullBoxes, bullMidlines, bar_index)
@@ -334,6 +340,20 @@ if extendFvgRight
 
 f_cleanupVisuals(bullBoxes, bullMidlines, fvgDisplayCap)
 f_cleanupVisuals(bearBoxes, bearMidlines, fvgDisplayCap)
+
+// Always keep the currently active entry-candidate FVG extending to the current bar,
+// independent of the global extend toggle, until it inverts or is invalidated/replaced.
+if latestBullActive and not latestBullIfvgConfirmed
+    if not na(latestBullBox)
+        box.set_right(latestBullBox, bar_index)
+    if not na(latestBullMidline)
+        line.set_x2(latestBullMidline, bar_index)
+
+if latestBearActive and not latestBearIfvgConfirmed
+    if not na(latestBearBox)
+        box.set_right(latestBearBox, bar_index)
+    if not na(latestBearMidline)
+        line.set_x2(latestBearMidline, bar_index)
 
 //━━━━━━━━━━━━━━━━━━━━
 // IFVG Confirmation
