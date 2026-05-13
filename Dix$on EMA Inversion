@@ -619,7 +619,8 @@ if array.size(tradeDirs) > 0
         if array.get(tradeIsActive, i)
             activeTradeDir := array.get(tradeDirs, i)
             break
-barcolor(activeTradeDir == 1 ? tradeBullCandleColor : activeTradeDir == -1 ? tradeBearCandleColor : tradeNeutralCandleColor)
+color tradeCandleColor = activeTradeDir == 1 ? tradeBullCandleColor : activeTradeDir == -1 ? tradeBearCandleColor : tradeNeutralCandleColor
+plotcandle(open, high, low, close, title="Trade Direction Candles", color=tradeCandleColor, wickcolor=tradeCandleColor, bordercolor=tradeCandleColor)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
