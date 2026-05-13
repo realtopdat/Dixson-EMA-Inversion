@@ -26,23 +26,25 @@ fillOpacity = input.int(85, "Fill Opacity", minval=0, maxval=100, inline="MASTER
 //━━━━━━━━━━━━━━━━━━━━
 // EMA Settings
 //━━━━━━━━━━━━━━━━━━━━
-shortEmaTf = input.timeframe("", "Short TF", inline="SMA_1", group=GROUP_SHORT_MA, tooltip="Short MA core: timeframe, length, and MA type. Leave TF blank to use chart timeframe.", display=display.none)
+shortEmaTf = input.timeframe("", "Short TF", inline="SMA_1", group=GROUP_SHORT_MA, tooltip="Short MA: timeframe, smooth mode, and length.", display=display.none)
+shortMtfSmoothMode = input.bool(false, "Short Smooth", inline="SMA_1", group=GROUP_SHORT_MA, display=display.none)
 shortEmaLength = input.int(31, "Short Len", minval=1, inline="SMA_1", group=GROUP_SHORT_MA, display=display.none)
-shortMaType = input.string("EMA", "Short Type", options=["EMA", "MA"], inline="SMA_1", group=GROUP_SHORT_MA, display=display.none)
-shortMtfSmoothMode = input.bool(true, "Short MTF Smooth", inline="SMA_2", group=GROUP_SHORT_MA, tooltip="Short MA rendering: MTF smoothing mode, line width, and line opacity.", display=display.none)
+shortMaType = input.string("EMA", "Short Type", options=["EMA", "MA"], inline="SMA_2", group=GROUP_SHORT_MA, tooltip="Short MA: type, width, and opacity.", display=display.none)
 shortEmaWidth = input.int(1, "Short Width", minval=1, maxval=5, inline="SMA_2", group=GROUP_SHORT_MA, display=display.none)
 shortMaOpacity = input.int(0, "Short Opacity", minval=0, maxval=100, inline="SMA_2", group=GROUP_SHORT_MA, display=display.none)
+shortMaSource = input.source(close, "Short Source", inline="SMA_3", group=GROUP_SHORT_MA, tooltip="Short MA: source and bull/bear colors.", display=display.none)
+shortBullColor = input.color(color.new(color.lime, 0), "Short Bull", inline="SMA_3", group=GROUP_SHORT_MA, display=display.none)
+shortBearColor = input.color(color.new(color.red, 0), "Short Bear", inline="SMA_3", group=GROUP_SHORT_MA, display=display.none)
 
-longEmaTf = input.timeframe("", "Long TF", inline="LMA_1", group=GROUP_LONG_MA, tooltip="Long MA core: timeframe, length, and MA type. Default is chart timeframe with length 77.", display=display.none)
+longEmaTf = input.timeframe("", "Long TF", inline="LMA_1", group=GROUP_LONG_MA, tooltip="Long MA: timeframe, smooth mode, and length.", display=display.none)
+longMtfSmoothMode = input.bool(false, "Long Smooth", inline="LMA_1", group=GROUP_LONG_MA, display=display.none)
 longEmaLength = input.int(77, "Long Len", minval=1, inline="LMA_1", group=GROUP_LONG_MA, display=display.none)
-longMaType = input.string("EMA", "Long Type", options=["EMA", "MA"], inline="LMA_1", group=GROUP_LONG_MA, display=display.none)
-longMtfSmoothMode = input.bool(true, "Long MTF Smooth", inline="LMA_2", group=GROUP_LONG_MA, tooltip="Long MA rendering: MTF smoothing mode, line width, and line opacity.", display=display.none)
+longMaType = input.string("EMA", "Long Type", options=["EMA", "MA"], inline="LMA_2", group=GROUP_LONG_MA, tooltip="Long MA: type, width, and opacity.", display=display.none)
 longEmaWidth = input.int(1, "Long Width", minval=1, maxval=5, inline="LMA_2", group=GROUP_LONG_MA, display=display.none)
 longMaOpacity = input.int(0, "Long Opacity", minval=0, maxval=100, inline="LMA_2", group=GROUP_LONG_MA, display=display.none)
-
-emaSource = input.source(close, "MA Source", inline="MA_SRC", group=GROUP_LONG_MA, tooltip="Shared MA source and trend colors used by both short/long MAs and spread fill direction.", display=display.none)
-bullTrendColor = input.color(color.new(color.lime, 0), "Bull Color", inline="MA_SRC", group=GROUP_LONG_MA, display=display.none)
-bearTrendColor = input.color(color.new(color.red, 0), "Bear Color", inline="MA_SRC", group=GROUP_LONG_MA, display=display.none)
+longMaSource = input.source(close, "Long Source", inline="LMA_3", group=GROUP_LONG_MA, tooltip="Long MA: source and bull/bear colors.", display=display.none)
+longBullColor = input.color(color.new(color.lime, 0), "Long Bull", inline="LMA_3", group=GROUP_LONG_MA, display=display.none)
+longBearColor = input.color(color.new(color.red, 0), "Long Bear", inline="LMA_3", group=GROUP_LONG_MA, display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // FVG Settings
@@ -190,10 +192,10 @@ f_placeCrossLbl(float y, string txt, bool isUp, float pad) =>
 //━━━━━━━━━━━━━━━━━━━━
 atrValue = ta.atr(atrLength)
 
-longPlotSeries = f_getConverted(longEmaTf, emaSource, longEmaLength, longMaType, longMtfSmoothMode)
-longLogicSeries = f_getConvertedDense(longEmaTf, emaSource, longEmaLength, longMaType, longMtfSmoothMode)
-shortPlotSeries = f_getConverted(shortEmaTf, emaSource, shortEmaLength, shortMaType, shortMtfSmoothMode)
-shortLogicSeries = f_getConvertedDense(shortEmaTf, emaSource, shortEmaLength, shortMaType, shortMtfSmoothMode)
+longPlotSeries = f_getConverted(longEmaTf, longMaSource, longEmaLength, longMaType, longMtfSmoothMode)
+longLogicSeries = f_getConvertedDense(longEmaTf, longMaSource, longEmaLength, longMaType, longMtfSmoothMode)
+shortPlotSeries = f_getConverted(shortEmaTf, shortMaSource, shortEmaLength, shortMaType, shortMtfSmoothMode)
+shortLogicSeries = f_getConvertedDense(shortEmaTf, shortMaSource, shortEmaLength, shortMaType, shortMtfSmoothMode)
 
 logicEma = longLogicSeries
 longVisualSmooth = longMtfSmoothMode ? longPlotSeries : longLogicSeries
@@ -202,8 +204,8 @@ plotEma = longVisualSmooth
 shortEmaLogic = shortLogicSeries
 shortEmaPlot = shortVisualSmooth
 
-longEmaColorDyn = close >= logicEma ? bullTrendColor : bearTrendColor
-shortEmaColorDyn = close >= shortEmaLogic ? bullTrendColor : bearTrendColor
+longEmaColorDyn = close >= logicEma ? longBullColor : longBearColor
+shortEmaColorDyn = close >= shortEmaLogic ? shortBullColor : shortBearColor
 
 longPlot = plot(showEma ? plotEma : na, "Long MA", color=color.new(longEmaColorDyn, longMaOpacity), linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short MA", color=color.new(shortEmaColorDyn, shortMaOpacity), linewidth=shortEmaWidth)
@@ -220,7 +222,7 @@ if shortFillState > longFillState
 else if shortFillState < longFillState
     fillBullState := false
 
-fillColor = fillBullState ? color.new(bullTrendColor, fillOpacity) : color.new(bearTrendColor, fillOpacity)
+fillColor = fillBullState ? color.new(longBullColor, fillOpacity) : color.new(longBearColor, fillOpacity)
 fill(longFillRefPlot, shortFillRefPlot, color=(showEma and showEmaFill) ? fillColor : na, title="EMA Spread Fill", fillgaps=true)
 
 // EMA crossover labels (Golden/Death) using displayed EMA states so HTF+MTF smoothing
