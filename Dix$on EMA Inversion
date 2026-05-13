@@ -105,6 +105,7 @@ tradeLineWidth = input.int(1, "Width", minval=1, maxval=5, inline="TRD_3", group
 tradeBullCandleColor = input.color(color.new(color.lime, 0), "Bull Candle", inline="TRD_4", group=GROUP_TRADE, tooltip="Candle color by active trade direction: bull, bear, or no active trade.", display=display.none)
 tradeBearCandleColor = input.color(color.new(color.red, 0), "Bear Candle", inline="TRD_4", group=GROUP_TRADE, display=display.none)
 tradeNeutralCandleColor = input.color(color.new(color.gray, 0), "No Trade", inline="TRD_4", group=GROUP_TRADE, display=display.none)
+showTradeCandleColors = input.bool(true, "Color Candles", inline="TRD_5", group=GROUP_TRADE, tooltip="Enable or disable trade-direction candle coloring.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
@@ -170,7 +171,7 @@ f_cleanupLabels(array<label> labelsArr, int cap) =>
 
 f_makeTradeLevel(float y, string txt, color col, int w) =>
     line ln = line.new(bar_index, y, bar_index, y, color=col, width=w, extend=extend.none)
-    label lb = label.new(bar_index, y, txt + " / $" + str.tostring(y, format.mintick), style=label.style_none, textcolor=col, color=color.new(color.black, 100), yloc=yloc.price, size=size.tiny)
+    label lb = label.new(bar_index, y, txt + " / $" + str.tostring(y, format.mintick), style=label.style_label_left, textcolor=col, color=color.new(color.black, 100), yloc=yloc.price, size=size.tiny)
     [ln, lb]
 
 f_deleteTradeAt(int i, array<line> tradeEntryLines, array<line> tradeStopLines, array<line> tradeBeLines, array<line> tradeR2Lines, array<line> tradeR3Lines,
@@ -620,7 +621,7 @@ if array.size(tradeDirs) > 0
             activeTradeDir := array.get(tradeDirs, i)
             break
 color tradeCandleColor = activeTradeDir == 1 ? tradeBullCandleColor : activeTradeDir == -1 ? tradeBearCandleColor : tradeNeutralCandleColor
-plotcandle(open, high, low, close, title="Trade Direction Candles", color=tradeCandleColor, wickcolor=tradeCandleColor, bordercolor=tradeCandleColor)
+plotcandle(open, high, low, close, title="Trade Direction Candles", color=showTradeCandleColors ? tradeCandleColor : na, wickcolor=showTradeCandleColors ? tradeCandleColor : na, bordercolor=showTradeCandleColors ? tradeCandleColor : na)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
