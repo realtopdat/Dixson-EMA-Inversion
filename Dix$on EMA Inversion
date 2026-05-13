@@ -447,6 +447,10 @@ barsSinceEmaTouch = ta.barssince(emaTouched)
 lastEmaTouchBar = barsSinceEmaTouch >= 0 ? bar_index - barsSinceEmaTouch : na
 labelSz = f_labelSize(entryLabelSizeInput)
 entryOffset = math.max(syminfo.mintick * 10.0, atrValue * entryMarkerOffsetAtrMult)
+int bullConfirmBars = math.max(3, (na(latestBearIfvgBar) or na(latestBearFvgBar)) ? 3 : latestBearIfvgBar - (latestBearFvgBar - 2) + 1)
+int bearConfirmBars = math.max(3, (na(latestBullIfvgBar) or na(latestBullFvgBar)) ? 3 : latestBullIfvgBar - (latestBullFvgBar - 2) + 1)
+float bullConfirmSwingLow = ta.lowest(low, bullConfirmBars)
+float bearConfirmSwingHigh = ta.highest(high, bearConfirmBars)
 
 if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and bar_index == latestBearIfvgBar
     touchWindowStart = latestBearFvgBar - emaTouchBarsBefore
@@ -464,10 +468,8 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
             if not na(entryFvgMid)
                 array.push(bullEntryFvgMidlines, entryFvgMid)
         if showTradeLevels
-            int confirmBars = math.max(3, latestBearIfvgBar - (latestBearFvgBar - 2) + 1)
-            float swingLow = ta.lowest(low, confirmBars)
             float tEntry = close
-            float tStop = math.min(swingLow, tEntry - syminfo.mintick)
+            float tStop = math.min(bullConfirmSwingLow, tEntry - syminfo.mintick)
             float trisk = math.max(tEntry - tStop, syminfo.mintick)
             float tBe = tEntry + trisk
             float tR2 = tEntry + trisk * 2.0
@@ -501,10 +503,8 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
             if not na(entryFvgMid)
                 array.push(bearEntryFvgMidlines, entryFvgMid)
         if showTradeLevels
-            int confirmBars = math.max(3, latestBullIfvgBar - (latestBullFvgBar - 2) + 1)
-            float swingHigh = ta.highest(high, confirmBars)
             float tEntry = close
-            float tStop = math.max(swingHigh, tEntry + syminfo.mintick)
+            float tStop = math.max(bearConfirmSwingHigh, tEntry + syminfo.mintick)
             float trisk = math.max(tStop - tEntry, syminfo.mintick)
             float tBe = tEntry - trisk
             float tR2 = tEntry - trisk * 2.0
