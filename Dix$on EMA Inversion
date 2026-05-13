@@ -11,6 +11,7 @@ string GROUP_FVG = "• FVG Core Settings ━━━━━━━━━━━━�
 string GROUP_IFVG = "• IFVG & Entry Logic ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_ENTRY = "• Entry Visuals ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_DISPLAY = "• Display Caps & Visibility ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+string GROUP_TRADE = "• Trade Levels ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_ALERTS = "• Alerts ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 //━━━━━━━━━━━━━━━━━━━━
@@ -89,6 +90,16 @@ entryMarkerOffsetAtrMult = input.float(0.2, "Marker Offset ATR", minval=0.0, ste
 fvgDisplayCap = input.int(2, "FVG Cap", minval=0, inline="DISP_1", group=GROUP_DISPLAY, tooltip="Visual retention caps. 0 means unlimited objects for that category.", display=display.none)
 entryDisplayCap = input.int(10, "Entry Cap", minval=0, inline="DISP_1", group=GROUP_DISPLAY, display=display.none)
 
+showTradeLevels = input.bool(true, "Show Levels", inline="TRD_1", group=GROUP_TRADE, tooltip="Draw Entry/Stop/BE/1R/2R levels for each new entry signal.", display=display.none)
+keepEndedTradeLevels = input.bool(false, "Keep Ended", inline="TRD_1", group=GROUP_TRADE, display=display.none)
+tradeLevelHistory = input.int(1, "History", minval=0, maxval=200, inline="TRD_1", group=GROUP_TRADE, display=display.none)
+entryLineColor = input.color(color.new(color.white, 0), "Entry", inline="TRD_2", group=GROUP_TRADE, tooltip="Trade level colors for entry/stop/BE.", display=display.none)
+stopLineColor = input.color(color.new(color.red, 0), "Stop", inline="TRD_2", group=GROUP_TRADE, display=display.none)
+beLineColor = input.color(color.new(color.orange, 0), "BE", inline="TRD_2", group=GROUP_TRADE, display=display.none)
+r1LineColor = input.color(color.new(color.aqua, 0), "1R", inline="TRD_3", group=GROUP_TRADE, tooltip="Reward level colors for 1R and 2R.", display=display.none)
+r2LineColor = input.color(color.new(color.lime, 0), "2R", inline="TRD_3", group=GROUP_TRADE, display=display.none)
+tradeLineWidth = input.int(1, "Width", minval=1, maxval=5, inline="TRD_3", group=GROUP_TRADE, display=display.none)
+
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
 //━━━━━━━━━━━━━━━━━━━━
@@ -150,6 +161,11 @@ f_cleanupLabels(array<label> labelsArr, int cap) =>
         while array.size(labelsArr) > cap
             lb = array.shift(labelsArr)
             label.delete(lb)
+
+f_makeTradeLevel(float y, string txt, color col, int w) =>
+    line ln = line.new(bar_index, y, bar_index, y, color=col, width=w, extend=extend.none)
+    label lb = label.new(bar_index, y, txt + " / $" + str.tostring(y, format.mintick), style=label.style_none, textcolor=col, color=color.new(color.black, 100), yloc=yloc.price, size=size.tiny)
+    [ln, lb]
 
 
 
@@ -249,6 +265,16 @@ var array<box> bullEntryFvgBoxes = array.new<box>()
 var array<line> bullEntryFvgMidlines = array.new<line>()
 var array<box> bearEntryFvgBoxes = array.new<box>()
 var array<line> bearEntryFvgMidlines = array.new<line>()
+var array<line> tradeEntryLines = array.new<line>()
+var array<line> tradeStopLines = array.new<line>()
+var array<line> tradeBeLines = array.new<line>()
+var array<line> tradeR1Lines = array.new<line>()
+var array<line> tradeR2Lines = array.new<line>()
+var array<label> tradeEntryLabels = array.new<label>()
+var array<label> tradeStopLabels = array.new<label>()
+var array<label> tradeBeLabels = array.new<label>()
+var array<label> tradeR1Labels = array.new<label>()
+var array<label> tradeR2Labels = array.new<label>()
 
 var int latestBullFvgBar = na
 var float latestBullTop = na
@@ -418,6 +444,20 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
             array.push(bullEntryFvgBoxes, entryFvgBox)
             if not na(entryFvgMid)
                 array.push(bullEntryFvgMidlines, entryFvgMid)
+        if showTradeLevels
+            float trisk = math.max(math.abs(latestBearTop - latestBearBottom), syminfo.mintick)
+            float tEntry = close
+            float tStop = tEntry - trisk
+            float tBe = tEntry
+            float tR1 = tEntry + trisk
+            float tR2 = tEntry + trisk * 2.0
+            [lnE, lbE] = f_makeTradeLevel(tEntry, "Entry", entryLineColor, tradeLineWidth)
+            [lnS, lbS] = f_makeTradeLevel(tStop, "Stop", stopLineColor, tradeLineWidth)
+            [lnB, lbB] = f_makeTradeLevel(tBe, "BE", beLineColor, tradeLineWidth)
+            [ln1, lb1] = f_makeTradeLevel(tR1, "1R", r1LineColor, tradeLineWidth)
+            [ln2, lb2] = f_makeTradeLevel(tR2, "2R", r2LineColor, tradeLineWidth)
+            array.push(tradeEntryLines, lnE), array.push(tradeStopLines, lnS), array.push(tradeBeLines, lnB), array.push(tradeR1Lines, ln1), array.push(tradeR2Lines, ln2)
+            array.push(tradeEntryLabels, lbE), array.push(tradeStopLabels, lbS), array.push(tradeBeLabels, lbB), array.push(tradeR1Labels, lb1), array.push(tradeR2Labels, lb2)
 
 if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and bar_index == latestBullIfvgBar
     touchWindowStart = latestBullFvgBar - emaTouchBarsBefore
@@ -434,11 +474,41 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
             array.push(bearEntryFvgBoxes, entryFvgBox)
             if not na(entryFvgMid)
                 array.push(bearEntryFvgMidlines, entryFvgMid)
+        if showTradeLevels
+            float trisk = math.max(math.abs(latestBullTop - latestBullBottom), syminfo.mintick)
+            float tEntry = close
+            float tStop = tEntry + trisk
+            float tBe = tEntry
+            float tR1 = tEntry - trisk
+            float tR2 = tEntry - trisk * 2.0
+            [lnE, lbE] = f_makeTradeLevel(tEntry, "Entry", entryLineColor, tradeLineWidth)
+            [lnS, lbS] = f_makeTradeLevel(tStop, "Stop", stopLineColor, tradeLineWidth)
+            [lnB, lbB] = f_makeTradeLevel(tBe, "BE", beLineColor, tradeLineWidth)
+            [ln1, lb1] = f_makeTradeLevel(tR1, "1R", r1LineColor, tradeLineWidth)
+            [ln2, lb2] = f_makeTradeLevel(tR2, "2R", r2LineColor, tradeLineWidth)
+            array.push(tradeEntryLines, lnE), array.push(tradeStopLines, lnS), array.push(tradeBeLines, lnB), array.push(tradeR1Lines, ln1), array.push(tradeR2Lines, ln2)
+            array.push(tradeEntryLabels, lbE), array.push(tradeStopLabels, lbS), array.push(tradeBeLabels, lbB), array.push(tradeR1Labels, lb1), array.push(tradeR2Labels, lb2)
 
 f_cleanupLabels(bullEntries, entryDisplayCap)
 f_cleanupLabels(bearEntries, entryDisplayCap)
 f_cleanupVisuals(bullEntryFvgBoxes, bullEntryFvgMidlines, entryDisplayCap)
 f_cleanupVisuals(bearEntryFvgBoxes, bearEntryFvgMidlines, entryDisplayCap)
+if array.size(tradeEntryLines) > 0
+    for i = 0 to array.size(tradeEntryLines) - 1
+        line.set_x2(array.get(tradeEntryLines, i), bar_index)
+        line.set_x2(array.get(tradeStopLines, i), bar_index)
+        line.set_x2(array.get(tradeBeLines, i), bar_index)
+        line.set_x2(array.get(tradeR1Lines, i), bar_index)
+        line.set_x2(array.get(tradeR2Lines, i), bar_index)
+        label.set_x(array.get(tradeEntryLabels, i), bar_index)
+        label.set_x(array.get(tradeStopLabels, i), bar_index)
+        label.set_x(array.get(tradeBeLabels, i), bar_index)
+        label.set_x(array.get(tradeR1Labels, i), bar_index)
+        label.set_x(array.get(tradeR2Labels, i), bar_index)
+if not keepEndedTradeLevels
+    while array.size(tradeEntryLines) > tradeLevelHistory
+        line.delete(array.shift(tradeEntryLines)), line.delete(array.shift(tradeStopLines)), line.delete(array.shift(tradeBeLines)), line.delete(array.shift(tradeR1Lines)), line.delete(array.shift(tradeR2Lines))
+        label.delete(array.shift(tradeEntryLabels)), label.delete(array.shift(tradeStopLabels)), label.delete(array.shift(tradeBeLabels)), label.delete(array.shift(tradeR1Labels)), label.delete(array.shift(tradeR2Labels))
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
