@@ -94,7 +94,7 @@ showTradeLevels = input.bool(true, "Show Levels", inline="TRD_1", group=GROUP_TR
 keepEndedTradeLevels = input.bool(false, "Keep Ended", inline="TRD_1", group=GROUP_TRADE, display=display.none)
 keepActiveTrades = input.bool(true, "Keep Active", inline="TRD_1", group=GROUP_TRADE, display=display.none)
 tradeLevelHistory = input.int(1, "History", minval=0, maxval=200, inline="TRD_2A", group=GROUP_TRADE, display=display.none)
-endTradeLevel = input.string("2R", "TP", options=["2R", "3R"], inline="TRD_2A", group=GROUP_TRADE, tooltip="Select TP that ends the trade, and use wick/body mode for hit detection.", display=display.none)
+endTradeLevel = input.string("2R", "TP", options=["1R", "2R", "3R"], inline="TRD_2A", group=GROUP_TRADE, tooltip="Select TP that ends the trade, and use wick/body mode for hit detection.", display=display.none)
 tradeHitMode = input.string("Wick", "Mode", options=["Wick", "Body"], inline="TRD_2A", group=GROUP_TRADE, display=display.none)
 entryLineColor = input.color(color.new(color.white, 0), "Entry", inline="TRD_2", group=GROUP_TRADE, tooltip="Trade level colors for entry/stop/BE.", display=display.none)
 stopLineColor = input.color(color.new(color.red, 0), "Stop", inline="TRD_2", group=GROUP_TRADE, display=display.none)
@@ -102,6 +102,9 @@ beLineColor = input.color(color.new(color.orange, 0), "BE", inline="TRD_2", grou
 r2LineColor = input.color(color.new(color.lime, 0), "2R", inline="TRD_3", group=GROUP_TRADE, tooltip="Reward level colors for 2R and 3R targets.", display=display.none)
 r3LineColor = input.color(color.new(color.blue, 0), "3R", inline="TRD_3", group=GROUP_TRADE, display=display.none)
 tradeLineWidth = input.int(1, "Width", minval=1, maxval=5, inline="TRD_3", group=GROUP_TRADE, display=display.none)
+tradeBullCandleColor = input.color(color.new(color.lime, 0), "Bull Candle", inline="TRD_4", group=GROUP_TRADE, tooltip="Candle color by active trade direction: bull, bear, or no active trade.", display=display.none)
+tradeBearCandleColor = input.color(color.new(color.red, 0), "Bear Candle", inline="TRD_4", group=GROUP_TRADE, display=display.none)
+tradeNeutralCandleColor = input.color(color.new(color.gray, 0), "No Trade", inline="TRD_4", group=GROUP_TRADE, display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
@@ -505,7 +508,7 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
                         f_deleteTradeAt(j, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
             array.push(tradeEntryLines, lnE), array.push(tradeStopLines, lnS), array.push(tradeBeLines, lnB), array.push(tradeR2Lines, ln2), array.push(tradeR3Lines, ln3)
             array.push(tradeEntryLabels, lbE), array.push(tradeStopLabels, lbS), array.push(tradeBeLabels, lbB), array.push(tradeR2Labels, lb2), array.push(tradeR3Labels, lb3)
-            array.push(tradeDirs, 1), array.push(tradeIsActive, true), array.push(tradeStops, tStop), array.push(tradeBEs, tBe), array.push(tradeTps, endTradeLevel == "3R" ? tR3 : tR2), array.push(tradeEntries, tEntry), array.push(tradeMovedToEntry, false)
+            array.push(tradeDirs, 1), array.push(tradeIsActive, true), array.push(tradeStops, tStop), array.push(tradeBEs, tBe), array.push(tradeTps, endTradeLevel == "1R" ? tBe : endTradeLevel == "3R" ? tR3 : tR2), array.push(tradeEntries, tEntry), array.push(tradeMovedToEntry, false)
 
 if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and bar_index == latestBullIfvgBar
     touchWindowStart = latestBullFvgBar - emaTouchBarsBefore
@@ -540,7 +543,7 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
                         f_deleteTradeAt(j, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
             array.push(tradeEntryLines, lnE), array.push(tradeStopLines, lnS), array.push(tradeBeLines, lnB), array.push(tradeR2Lines, ln2), array.push(tradeR3Lines, ln3)
             array.push(tradeEntryLabels, lbE), array.push(tradeStopLabels, lbS), array.push(tradeBeLabels, lbB), array.push(tradeR2Labels, lb2), array.push(tradeR3Labels, lb3)
-            array.push(tradeDirs, -1), array.push(tradeIsActive, true), array.push(tradeStops, tStop), array.push(tradeBEs, tBe), array.push(tradeTps, endTradeLevel == "3R" ? tR3 : tR2), array.push(tradeEntries, tEntry), array.push(tradeMovedToEntry, false)
+            array.push(tradeDirs, -1), array.push(tradeIsActive, true), array.push(tradeStops, tStop), array.push(tradeBEs, tBe), array.push(tradeTps, endTradeLevel == "1R" ? tBe : endTradeLevel == "3R" ? tR3 : tR2), array.push(tradeEntries, tEntry), array.push(tradeMovedToEntry, false)
 
 f_cleanupLabels(bullEntries, entryDisplayCap)
 f_cleanupLabels(bearEntries, entryDisplayCap)
@@ -609,6 +612,14 @@ if array.size(tradeEntryLines) > 0
 if not keepEndedTradeLevels
     while array.size(tradeEntryLines) > tradeLevelHistory
         f_deleteTradeAt(0, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
+
+int activeTradeDir = 0
+if array.size(tradeDirs) > 0
+    for i = array.size(tradeDirs) - 1 to 0
+        if array.get(tradeIsActive, i)
+            activeTradeDir := array.get(tradeDirs, i)
+            break
+barcolor(activeTradeDir == 1 ? tradeBullCandleColor : activeTradeDir == -1 ? tradeBearCandleColor : tradeNeutralCandleColor)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
