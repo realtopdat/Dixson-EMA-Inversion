@@ -170,6 +170,15 @@ f_makeTradeLevel(float y, string txt, color col, int w) =>
     label lb = label.new(bar_index, y, txt + " / $" + str.tostring(y, format.mintick), style=label.style_none, textcolor=col, color=color.new(color.black, 100), yloc=yloc.price, size=size.tiny)
     [ln, lb]
 
+f_deleteTradeAt(int i, array<line> tradeEntryLines, array<line> tradeStopLines, array<line> tradeBeLines, array<line> tradeR2Lines, array<line> tradeR3Lines,
+     array<label> tradeEntryLabels, array<label> tradeStopLabels, array<label> tradeBeLabels, array<label> tradeR2Labels, array<label> tradeR3Labels,
+     int[] tradeDirs, bool[] tradeIsActive, float[] tradeStops, float[] tradeBEs, float[] tradeTps, float[] tradeEntries, bool[] tradeMovedToEntry) =>
+    line.delete(array.get(tradeEntryLines, i)), line.delete(array.get(tradeStopLines, i)), line.delete(array.get(tradeBeLines, i)), line.delete(array.get(tradeR2Lines, i)), line.delete(array.get(tradeR3Lines, i))
+    label.delete(array.get(tradeEntryLabels, i)), label.delete(array.get(tradeStopLabels, i)), label.delete(array.get(tradeBeLabels, i)), label.delete(array.get(tradeR2Labels, i)), label.delete(array.get(tradeR3Labels, i))
+    array.remove(tradeEntryLines, i), array.remove(tradeStopLines, i), array.remove(tradeBeLines, i), array.remove(tradeR2Lines, i), array.remove(tradeR3Lines, i)
+    array.remove(tradeEntryLabels, i), array.remove(tradeStopLabels, i), array.remove(tradeBeLabels, i), array.remove(tradeR2Labels, i), array.remove(tradeR3Labels, i)
+    array.remove(tradeDirs, i), array.remove(tradeIsActive, i), array.remove(tradeStops, i), array.remove(tradeBEs, i), array.remove(tradeTps, i), array.remove(tradeEntries, i), array.remove(tradeMovedToEntry, i)
+
 
 
 
@@ -471,7 +480,7 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
             if not keepActiveTrades
                 for j = array.size(tradeEntryLines) - 1 to 0
                     if array.get(tradeIsActive, j)
-                        f_deleteTradeAt(j)
+                        f_deleteTradeAt(j, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
             array.push(tradeEntryLines, lnE), array.push(tradeStopLines, lnS), array.push(tradeBeLines, lnB), array.push(tradeR2Lines, ln2), array.push(tradeR3Lines, ln3)
             array.push(tradeEntryLabels, lbE), array.push(tradeStopLabels, lbS), array.push(tradeBeLabels, lbB), array.push(tradeR2Labels, lb2), array.push(tradeR3Labels, lb3)
             array.push(tradeDirs, 1), array.push(tradeIsActive, true), array.push(tradeStops, tStop), array.push(tradeBEs, tBe), array.push(tradeTps, endTradeLevel == "3R" ? tR3 : tR2), array.push(tradeEntries, tEntry), array.push(tradeMovedToEntry, false)
@@ -508,7 +517,7 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
             if not keepActiveTrades
                 for j = array.size(tradeEntryLines) - 1 to 0
                     if array.get(tradeIsActive, j)
-                        f_deleteTradeAt(j)
+                        f_deleteTradeAt(j, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
             array.push(tradeEntryLines, lnE), array.push(tradeStopLines, lnS), array.push(tradeBeLines, lnB), array.push(tradeR2Lines, ln2), array.push(tradeR3Lines, ln3)
             array.push(tradeEntryLabels, lbE), array.push(tradeStopLabels, lbS), array.push(tradeBeLabels, lbB), array.push(tradeR2Labels, lb2), array.push(tradeR3Labels, lb3)
             array.push(tradeDirs, -1), array.push(tradeIsActive, true), array.push(tradeStops, tStop), array.push(tradeBEs, tBe), array.push(tradeTps, endTradeLevel == "3R" ? tR3 : tR2), array.push(tradeEntries, tEntry), array.push(tradeMovedToEntry, false)
@@ -517,12 +526,6 @@ f_cleanupLabels(bullEntries, entryDisplayCap)
 f_cleanupLabels(bearEntries, entryDisplayCap)
 f_cleanupVisuals(bullEntryFvgBoxes, bullEntryFvgMidlines, entryDisplayCap)
 f_cleanupVisuals(bearEntryFvgBoxes, bearEntryFvgMidlines, entryDisplayCap)
-f_deleteTradeAt(int i) =>
-    line.delete(array.get(tradeEntryLines, i)), line.delete(array.get(tradeStopLines, i)), line.delete(array.get(tradeBeLines, i)), line.delete(array.get(tradeR2Lines, i)), line.delete(array.get(tradeR3Lines, i))
-    label.delete(array.get(tradeEntryLabels, i)), label.delete(array.get(tradeStopLabels, i)), label.delete(array.get(tradeBeLabels, i)), label.delete(array.get(tradeR2Labels, i)), label.delete(array.get(tradeR3Labels, i))
-    array.remove(tradeEntryLines, i), array.remove(tradeStopLines, i), array.remove(tradeBeLines, i), array.remove(tradeR2Lines, i), array.remove(tradeR3Lines, i)
-    array.remove(tradeEntryLabels, i), array.remove(tradeStopLabels, i), array.remove(tradeBeLabels, i), array.remove(tradeR2Labels, i), array.remove(tradeR3Labels, i)
-    array.remove(tradeDirs, i), array.remove(tradeIsActive, i), array.remove(tradeStops, i), array.remove(tradeBEs, i), array.remove(tradeTps, i), array.remove(tradeEntries, i), array.remove(tradeMovedToEntry, i)
 
 if array.size(tradeEntryLines) > 0
     for i = 0 to array.size(tradeEntryLines) - 1
@@ -564,10 +567,10 @@ if array.size(tradeEntryLines) > 0
             if endNow
                 array.set(tradeIsActive, i, false)
                 if not keepEndedTradeLevels
-                    f_deleteTradeAt(i)
+                    f_deleteTradeAt(i, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
 if not keepEndedTradeLevels
     while array.size(tradeEntryLines) > tradeLevelHistory
-        f_deleteTradeAt(0)
+        f_deleteTradeAt(0, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts
