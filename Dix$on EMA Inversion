@@ -505,9 +505,10 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
             [ln2, lb2] = f_makeTradeLevel(tR2, "2R", r2LineColor, tradeLineWidth)
             [ln3, lb3] = f_makeTradeLevel(tR3, "3R", r3LineColor, tradeLineWidth)
             if not keepActiveTrades
-                for j = array.size(tradeEntryLines) - 1 to 0
-                    if array.get(tradeIsActive, j)
-                        f_deleteTradeAt(j, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
+                if array.size(tradeEntryLines) > 0
+                    for j = array.size(tradeEntryLines) - 1 to 0
+                        if array.get(tradeIsActive, j)
+                            f_deleteTradeAt(j, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
             if activeTradeCap > 0
                 int activeCount = 0
                 for j = 0 to array.size(tradeIsActive) - 1
@@ -556,9 +557,10 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
             [ln2, lb2] = f_makeTradeLevel(tR2, "2R", r2LineColor, tradeLineWidth)
             [ln3, lb3] = f_makeTradeLevel(tR3, "3R", r3LineColor, tradeLineWidth)
             if not keepActiveTrades
-                for j = array.size(tradeEntryLines) - 1 to 0
-                    if array.get(tradeIsActive, j)
-                        f_deleteTradeAt(j, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
+                if array.size(tradeEntryLines) > 0
+                    for j = array.size(tradeEntryLines) - 1 to 0
+                        if array.get(tradeIsActive, j)
+                            f_deleteTradeAt(j, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
             if activeTradeCap > 0
                 int activeCount = 0
                 for j = 0 to array.size(tradeIsActive) - 1
