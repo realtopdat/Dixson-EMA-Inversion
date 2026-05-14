@@ -639,10 +639,10 @@ if array.size(tradeEntryLines) > 0
                     label.set_text(enLabel, "Entry / SL / $" + str.tostring(entryV, format.mintick))
                 stopV := entryV
             bool endNow = dir == 1 ? (hitHi >= tpV or hitLo <= stopV) : (hitLo <= tpV or hitHi >= stopV)
-                if endNow
-                    array.set(tradeIsActive, i, false)
-                    if not showTradeHistory
-                        f_deleteTradeAt(i, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
+            if endNow
+                array.set(tradeIsActive, i, false)
+                if not showTradeHistory
+                    f_deleteTradeAt(i, tradeEntryLines, tradeStopLines, tradeBeLines, tradeR2Lines, tradeR3Lines, tradeEntryLabels, tradeStopLabels, tradeBeLabels, tradeR2Labels, tradeR3Labels, tradeDirs, tradeIsActive, tradeStops, tradeBEs, tradeTps, tradeEntries, tradeMovedToEntry)
 if showTradeHistory and tradeLevelHistory > 0
     int endedCount = 0
     for i = 0 to array.size(tradeIsActive) - 1
