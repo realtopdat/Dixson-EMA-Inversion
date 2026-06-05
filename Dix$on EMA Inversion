@@ -226,6 +226,16 @@ f_createEntryFvgVisual(int leftBar, float top, float bottom, color fvgColor, int
         newEntryMid := line.new(leftBar, mid, bar_index, mid, color=midColor, style=f_midlineStyle(midStyle), extend=extend.none)
     [newEntryBox, newEntryMid]
 
+f_createCoreFvgLabel(int rightBar, float top, float bottom, string txt, color fvgColor) =>
+    label.new(rightBar, (top + bottom) * 0.5, txt, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(color.black, 100), textcolor=color.new(fvgColor, 0), size=size.tiny)
+
+f_updateCoreFvgLabel(label lb, int rightBar, float top, float bottom, string txt, color fvgColor) =>
+    if not na(lb)
+        label.set_x(lb, rightBar)
+        label.set_y(lb, (top + bottom) * 0.5)
+        label.set_text(lb, txt)
+        label.set_textcolor(lb, color.new(fvgColor, 0))
+
 // Helper to place cross labels with Dix$on Levels styling.
 f_placeCrossLbl(float y, string txt, bool isUp, float pad) =>
     if not na(y)
@@ -294,8 +304,10 @@ if showEma and showEmaCrossLabels
 //━━━━━━━━━━━━━━━━━━━━
 var array<box> bullBoxes = array.new<box>()
 var array<line> bullMidlines = array.new<line>()
+var array<label> bullFvgLabels = array.new<label>()
 var array<box> bearBoxes = array.new<box>()
 var array<line> bearMidlines = array.new<line>()
+var array<label> bearFvgLabels = array.new<label>()
 var array<label> bullEntries = array.new<label>()
 var array<label> bearEntries = array.new<label>()
 var array<box> bullEntryFvgBoxes = array.new<box>()
@@ -329,6 +341,7 @@ var int latestBullIfvgBar = na
 var bool latestBullSignalDone = false
 var box latestBullBox = na
 var line latestBullMidline = na
+var label latestBullFvgLabel = na
 
 var int latestBearFvgBar = na
 var float latestBearTop = na
@@ -339,6 +352,7 @@ var int latestBearIfvgBar = na
 var bool latestBearSignalDone = false
 var box latestBearBox = na
 var line latestBearMidline = na
+var label latestBearFvgLabel = na
 
 var bool bullIfvgConfirmedAlert = false
 var bool bearIfvgConfirmedAlert = false
@@ -376,6 +390,9 @@ if bullFvgFound
             newBox = box.new(bar_index - 2, fvgTop, rightEdge, fvgBottom, border_color=color.new(bullFvgColor, 0), bgcolor=color.new(bullFvgColor, fvgTransparency), extend=extend.none)
             array.push(bullBoxes, newBox)
             latestBullBox := newBox
+            newLabel = f_createCoreFvgLabel(rightEdge, fvgTop, fvgBottom, "FVG", bullFvgColor)
+            array.push(bullFvgLabels, newLabel)
+            latestBullFvgLabel := newLabel
             latestBullMidline := na
             if showMidline
                 mid = (fvgTop + fvgBottom) * 0.5
@@ -403,6 +420,9 @@ if bearFvgFound
             newBox = box.new(bar_index - 2, fvgTop, rightEdge, fvgBottom, border_color=color.new(bearFvgColor, 0), bgcolor=color.new(bearFvgColor, fvgTransparency), extend=extend.none)
             array.push(bearBoxes, newBox)
             latestBearBox := newBox
+            newLabel = f_createCoreFvgLabel(rightEdge, fvgTop, fvgBottom, "FVG", bearFvgColor)
+            array.push(bearFvgLabels, newLabel)
+            latestBearFvgLabel := newLabel
             latestBearMidline := na
             if showMidline
                 mid = (fvgTop + fvgBottom) * 0.5
@@ -418,20 +438,27 @@ if extendFvgRight
 
 f_cleanupVisuals(bullBoxes, bullMidlines, fvgDisplayCap)
 f_cleanupVisuals(bearBoxes, bearMidlines, fvgDisplayCap)
+f_cleanupLabels(bullFvgLabels, fvgDisplayCap)
+f_cleanupLabels(bearFvgLabels, fvgDisplayCap)
 
-// Always keep the currently active entry-candidate FVG extending to the current bar,
-// independent of the global extend toggle, until it inverts or is invalidated/replaced.
+// Always keep the currently active entry-candidate FVG extending five bars past the
+// current bar, independent of the global extend toggle, until it inverts or is
+// invalidated/replaced.
 if latestBullActive and not latestBullIfvgConfirmed
+    rightEdge = bar_index + 5
     if not na(latestBullBox)
-        box.set_right(latestBullBox, bar_index)
+        box.set_right(latestBullBox, rightEdge)
     if not na(latestBullMidline)
-        line.set_x2(latestBullMidline, bar_index)
+        line.set_x2(latestBullMidline, rightEdge)
+    f_updateCoreFvgLabel(latestBullFvgLabel, rightEdge, latestBullTop, latestBullBottom, "FVG", bullFvgColor)
 
 if latestBearActive and not latestBearIfvgConfirmed
+    rightEdge = bar_index + 5
     if not na(latestBearBox)
-        box.set_right(latestBearBox, bar_index)
+        box.set_right(latestBearBox, rightEdge)
     if not na(latestBearMidline)
-        line.set_x2(latestBearMidline, bar_index)
+        line.set_x2(latestBearMidline, rightEdge)
+    f_updateCoreFvgLabel(latestBearFvgLabel, rightEdge, latestBearTop, latestBearBottom, "FVG", bearFvgColor)
 
 //━━━━━━━━━━━━━━━━━━━━
 // IFVG Confirmation
@@ -444,9 +471,14 @@ if latestBullActive and not latestBullIfvgConfirmed
             latestBullIfvgConfirmed := true
             latestBullIfvgBar := bar_index
             bearIfvgConfirmedAlert := true
+            rightEdge = bar_index + 5
             if not na(latestBullBox)
+                box.set_right(latestBullBox, rightEdge)
                 box.set_bgcolor(latestBullBox, color.new(bearFvgColor, fvgTransparency))
                 box.set_border_color(latestBullBox, color.new(bearFvgColor, 0))
+            if not na(latestBullMidline)
+                line.set_x2(latestBullMidline, rightEdge)
+            f_updateCoreFvgLabel(latestBullFvgLabel, rightEdge, latestBullTop, latestBullBottom, "IFVG", bearFvgColor)
     else
         latestBullActive := false
 
@@ -458,9 +490,14 @@ if latestBearActive and not latestBearIfvgConfirmed
             latestBearIfvgConfirmed := true
             latestBearIfvgBar := bar_index
             bullIfvgConfirmedAlert := true
+            rightEdge = bar_index + 5
             if not na(latestBearBox)
+                box.set_right(latestBearBox, rightEdge)
                 box.set_bgcolor(latestBearBox, color.new(bullFvgColor, fvgTransparency))
                 box.set_border_color(latestBearBox, color.new(bullFvgColor, 0))
+            if not na(latestBearMidline)
+                line.set_x2(latestBearMidline, rightEdge)
+            f_updateCoreFvgLabel(latestBearFvgLabel, rightEdge, latestBearTop, latestBearBottom, "IFVG", bullFvgColor)
     else
         latestBearActive := false
 
