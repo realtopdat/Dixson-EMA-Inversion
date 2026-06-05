@@ -227,13 +227,14 @@ f_createEntryFvgVisual(int leftBar, float top, float bottom, color fvgColor, int
     [newEntryBox, newEntryMid]
 
 f_createCoreFvgLabel(int rightBar, float top, float bottom, string txt, color fvgColor) =>
-    label.new(rightBar, (top + bottom) * 0.5, txt, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.new(color.black, 100), textcolor=color.new(fvgColor, 0), size=size.tiny)
+    label.new(rightBar, (top + bottom) * 0.5, txt, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_right, color=color.new(color.black, 100), textcolor=color.new(fvgColor, 0), size=size.tiny)
 
 f_updateCoreFvgLabel(label lb, int rightBar, float top, float bottom, string txt, color fvgColor) =>
     if not na(lb)
         label.set_x(lb, rightBar)
         label.set_y(lb, (top + bottom) * 0.5)
         label.set_text(lb, txt)
+        label.set_style(lb, label.style_label_right)
         label.set_textcolor(lb, color.new(fvgColor, 0))
 
 // Helper to place cross labels with Dix$on Levels styling.
