@@ -218,12 +218,30 @@ f_extendVisualsToBar(array<box> boxesArr, array<line> linesArr, int rightBar) =>
             l = array.get(linesArr, i)
             line.set_x2(l, rightBar)
 
+f_extendEntryFvgVisualsToBar(array<box> boxesArr, array<line> linesArr, array<label> labelsArr, int rightBar) =>
+    if array.size(boxesArr) > 0
+        for i = 0 to array.size(boxesArr) - 1
+            b = array.get(boxesArr, i)
+            box.set_right(b, rightBar)
+    labelEdge = rightBar - 1
+    if array.size(linesArr) > 0
+        for i = 0 to array.size(linesArr) - 1
+            l = array.get(linesArr, i)
+            line.set_x2(l, labelEdge)
+    if array.size(labelsArr) > 0
+        for i = 0 to array.size(labelsArr) - 1
+            lb = array.get(labelsArr, i)
+            if not na(lb)
+                label.set_x(lb, rightBar)
+
 f_createEntryFvgVisual(int leftBar, float top, float bottom, color fvgColor, int transp, bool drawMid, color midColor, string midStyle) =>
-    newEntryBox = box.new(leftBar, top, bar_index, bottom, border_color=color.new(fvgColor, 0), bgcolor=color.new(fvgColor, transp), extend=extend.none)
+    rightEdge = bar_index
+    labelEdge = rightEdge - 1
+    newEntryBox = box.new(leftBar, top, rightEdge, bottom, border_color=color.new(fvgColor, 0), bgcolor=color.new(fvgColor, transp), extend=extend.none)
     line newEntryMid = na
     if drawMid
         mid = (top + bottom) * 0.5
-        newEntryMid := line.new(leftBar, mid, bar_index, mid, color=midColor, style=f_midlineStyle(midStyle), extend=extend.none)
+        newEntryMid := line.new(leftBar, mid, labelEdge, mid, color=midColor, style=f_midlineStyle(midStyle), extend=extend.none)
     [newEntryBox, newEntryMid]
 
 f_createCoreFvgLabel(int rightBar, float top, float bottom, string txt, color fvgColor) =>
@@ -313,8 +331,10 @@ var array<label> bullEntries = array.new<label>()
 var array<label> bearEntries = array.new<label>()
 var array<box> bullEntryFvgBoxes = array.new<box>()
 var array<line> bullEntryFvgMidlines = array.new<line>()
+var array<label> bullEntryFvgLabels = array.new<label>()
 var array<box> bearEntryFvgBoxes = array.new<box>()
 var array<line> bearEntryFvgMidlines = array.new<line>()
+var array<label> bearEntryFvgLabels = array.new<label>()
 var array<line> tradeEntryLines = array.new<line>()
 var array<line> tradeStopLines = array.new<line>()
 var array<line> tradeBeLines = array.new<line>()
@@ -434,8 +454,8 @@ if bearFvgFound
 if extendFvgRight
     f_extendVisualsToBar(bullBoxes, bullMidlines, bar_index)
     f_extendVisualsToBar(bearBoxes, bearMidlines, bar_index)
-    f_extendVisualsToBar(bullEntryFvgBoxes, bullEntryFvgMidlines, bar_index)
-    f_extendVisualsToBar(bearEntryFvgBoxes, bearEntryFvgMidlines, bar_index)
+    f_extendEntryFvgVisualsToBar(bullEntryFvgBoxes, bullEntryFvgMidlines, bullEntryFvgLabels, bar_index)
+    f_extendEntryFvgVisualsToBar(bearEntryFvgBoxes, bearEntryFvgMidlines, bearEntryFvgLabels, bar_index)
 
 f_cleanupVisuals(bullBoxes, bullMidlines, fvgDisplayCap)
 f_cleanupVisuals(bearBoxes, bearMidlines, fvgDisplayCap)
@@ -532,6 +552,8 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
             array.push(bullEntries, lb)
             [entryFvgBox, entryFvgMid] = f_createEntryFvgVisual(latestBearFvgBar - 2, latestBearTop, latestBearBottom, bullFvgColor, fvgTransparency, showMidline, midlineColor, midlineStyleInput)
             array.push(bullEntryFvgBoxes, entryFvgBox)
+            entryFvgLabel = f_createCoreFvgLabel(bar_index, latestBearTop, latestBearBottom, "IFVG", bullFvgColor)
+            array.push(bullEntryFvgLabels, entryFvgLabel)
             if not na(entryFvgMid)
                 array.push(bullEntryFvgMidlines, entryFvgMid)
         if showTradeLevels
@@ -586,6 +608,8 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
             array.push(bearEntries, lb)
             [entryFvgBox, entryFvgMid] = f_createEntryFvgVisual(latestBullFvgBar - 2, latestBullTop, latestBullBottom, bearFvgColor, fvgTransparency, showMidline, midlineColor, midlineStyleInput)
             array.push(bearEntryFvgBoxes, entryFvgBox)
+            entryFvgLabel = f_createCoreFvgLabel(bar_index, latestBullTop, latestBullBottom, "IFVG", bearFvgColor)
+            array.push(bearEntryFvgLabels, entryFvgLabel)
             if not na(entryFvgMid)
                 array.push(bearEntryFvgMidlines, entryFvgMid)
         if showTradeLevels
@@ -631,6 +655,8 @@ f_cleanupLabels(bullEntries, entryDisplayCap)
 f_cleanupLabels(bearEntries, entryDisplayCap)
 f_cleanupVisuals(bullEntryFvgBoxes, bullEntryFvgMidlines, entryDisplayCap)
 f_cleanupVisuals(bearEntryFvgBoxes, bearEntryFvgMidlines, entryDisplayCap)
+f_cleanupLabels(bullEntryFvgLabels, entryDisplayCap)
+f_cleanupLabels(bearEntryFvgLabels, entryDisplayCap)
 
 if array.size(tradeEntryLines) > 0
     int tradeRightEdge = bar_index + 10
