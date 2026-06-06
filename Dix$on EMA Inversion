@@ -124,9 +124,9 @@ showTradeCandleColors = input.bool(true, "Color Candles", inline="TRD_5", group=
 // Dashboard
 //━━━━━━━━━━━━━━━━━━━━
 showLiveDashboard = input.bool(true, "Show Live Panel", inline="DASH_1", group=GROUP_DASHBOARD, display=display.none)
-liveDashboardPositionInput = input.string("Top Right", "Live Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], inline="DASH_1", group=GROUP_DASHBOARD, display=display.none)
-showPerformanceDashboard = input.bool(true, "Show Performance Panel", inline="DASH_2", group=GROUP_DASHBOARD, display=display.none)
-performanceDashboardPositionInput = input.string("Bottom Right", "Performance Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], inline="DASH_2", group=GROUP_DASHBOARD, display=display.none)
+liveDashboardPositionInput = input.string("Bottom Right", "Live Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], inline="DASH_1", group=GROUP_DASHBOARD, display=display.none)
+showPerformanceDashboard = input.bool(false, "Show Performance Panel", inline="DASH_2", group=GROUP_DASHBOARD, display=display.none)
+performanceDashboardPositionInput = input.string("Top Right", "Performance Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], inline="DASH_2", group=GROUP_DASHBOARD, display=display.none)
 dashboardTextSizeInput = input.string("Tiny", "Text Size", options=["Tiny", "Small", "Normal"], inline="DASH_3", group=GROUP_DASHBOARD, display=display.none)
 dashboardBgOpacity = input.int(15, "BG Opacity", minval=0, maxval=100, inline="DASH_3", group=GROUP_DASHBOARD, display=display.none)
 
@@ -439,8 +439,8 @@ var float statNetR = 0.0
 var float statGrossWinR = 0.0
 var float statGrossLossR = 0.0
 
-var table liveDashboard = table.new(position.top_right, 2, 8, bgcolor=color.new(color.black, 100), frame_color=color.new(color.gray, 70), frame_width=1, border_color=color.new(color.gray, 80), border_width=1)
-var table performanceDashboard = table.new(position.bottom_right, 2, 11, bgcolor=color.new(color.black, 100), frame_color=color.new(color.gray, 70), frame_width=1, border_color=color.new(color.gray, 80), border_width=1)
+var table liveDashboard = table.new(position.bottom_right, 2, 7, bgcolor=color.new(color.black, 100), frame_color=color.new(color.gray, 70), frame_width=1, border_color=color.new(color.gray, 80), border_width=1)
+var table performanceDashboard = table.new(position.top_right, 2, 10, bgcolor=color.new(color.black, 100), frame_color=color.new(color.gray, 70), frame_width=1, border_color=color.new(color.gray, 80), border_width=1)
 
 var int latestBullFvgBar = na
 var float latestBullTop = na
@@ -970,61 +970,57 @@ if barstate.islast
     table.set_position(performanceDashboard, f_dashboardPosition(performanceDashboardPositionInput))
 
     if not showLiveDashboard
-        table.clear(liveDashboard, 0, 0, 1, 7)
+        table.clear(liveDashboard, 0, 0, 1, 6)
     else
-        table.clear(liveDashboard, 0, 0, 1, 7)
+        table.clear(liveDashboard, 0, 0, 1, 6)
         color biasBg = dashBiasDir == 1 ? dashBullBg : dashBiasDir == -1 ? dashBearBg : dashNeutralBg
         color activeBg = dashActiveDir == 1 ? dashBullBg : dashActiveDir == -1 ? dashBearBg : dashNeutralBg
         color priceRowBg = dashActiveDir == 0 ? dashNeutralBg : dashLabelBg
         color beRowBg = dashActiveDir == 0 ? dashNeutralBg : dashBeBg
         color rBg = na(dashCurrentR) ? dashNeutralBg : dashCurrentR > 0 ? dashBullBg : dashCurrentR < 0 ? dashBearBg : dashNeutralBg
-        f_dashCell(liveDashboard, 0, 0, "Dix$on Live", dashTextColor, dashHeaderBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 1, 0, syminfo.ticker + " " + timeframe.period, dashTextColor, dashHeaderBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 0, 1, "Bias", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 1, 1, dashBiasTxt, dashTextColor, biasBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 0, 2, "Active Trade", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 1, 2, dashActiveTradeTxt, dashTextColor, activeBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 0, 3, "Entry", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 1, 3, f_fmtPrice(dashActiveEntry), dashTextColor, priceRowBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 0, 4, "Stop", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 1, 4, f_fmtPrice(dashActiveStop), dashTextColor, priceRowBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 0, 5, "BE / 1R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 1, 5, f_fmtPrice(dashActiveBE), dashTextColor, beRowBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 0, 6, "TP", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 1, 6, f_fmtPrice(dashActiveTP), dashTextColor, priceRowBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 0, 7, "Current R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(liveDashboard, 1, 7, f_fmtR(dashCurrentR), dashTextColor, rBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 0, "Bias", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 0, dashBiasTxt, dashTextColor, biasBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 1, "Active Trade", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 1, dashActiveTradeTxt, dashTextColor, activeBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 2, "Entry", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 2, f_fmtPrice(dashActiveEntry), dashTextColor, priceRowBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 3, "Stop", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 3, f_fmtPrice(dashActiveStop), dashTextColor, priceRowBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 4, "BE / 1R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 4, f_fmtPrice(dashActiveBE), dashTextColor, beRowBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 5, "TP", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 5, f_fmtPrice(dashActiveTP), dashTextColor, priceRowBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 6, "Current R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 6, f_fmtR(dashCurrentR), dashTextColor, rBg, dashboardTextSizeInput)
 
     if not showPerformanceDashboard
-        table.clear(performanceDashboard, 0, 0, 1, 10)
+        table.clear(performanceDashboard, 0, 0, 1, 9)
     else
-        table.clear(performanceDashboard, 0, 0, 1, 10)
+        table.clear(performanceDashboard, 0, 0, 1, 9)
         color netRBg = statNetR > 0 ? dashBullBg : statNetR < 0 ? dashBearBg : dashNeutralBg
         color avgRBg = na(dashAvgR) ? dashNeutralBg : dashAvgR > 0 ? dashBullBg : dashAvgR < 0 ? dashBearBg : dashNeutralBg
         color pfBg = na(dashProfitFactor) ? dashNeutralBg : dashProfitFactor >= 1.0 ? dashBullBg : dashBearBg
         string pfTxt = na(dashProfitFactor) ? "—" : str.tostring(dashProfitFactor, "#.00")
-        f_dashCell(performanceDashboard, 0, 0, "Dix$on Performance", dashTextColor, dashHeaderBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 0, syminfo.ticker + " " + timeframe.period, dashTextColor, dashHeaderBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 1, "Signals", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 1, str.tostring(statTotalSignals), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 2, "Long / Short", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 2, str.tostring(statLongSignals) + " / " + str.tostring(statShortSignals), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 3, "Closed Trades", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 3, str.tostring(statClosedTrades), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 4, "Wins", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 4, str.tostring(statWins), dashTextColor, dashBullBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 5, "Losses", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 5, str.tostring(statLosses), dashTextColor, dashBearBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 6, "BE", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 6, str.tostring(statBreakevens), dashTextColor, dashBeBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 7, "Win Rate", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 7, f_fmtPct(dashWinRate), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 8, "Net R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 8, f_fmtR(statNetR), dashTextColor, netRBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 9, "Avg R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 9, f_fmtR(dashAvgR), dashTextColor, avgRBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 0, 10, "Profit Factor", dashTextColor, dashLabelBg, dashboardTextSizeInput)
-        f_dashCell(performanceDashboard, 1, 10, pfTxt, dashTextColor, pfBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 0, "Signals", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 0, str.tostring(statTotalSignals), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 1, "Long / Short", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 1, str.tostring(statLongSignals) + " / " + str.tostring(statShortSignals), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 2, "Closed Trades", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 2, str.tostring(statClosedTrades), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 3, "Wins", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 3, str.tostring(statWins), dashTextColor, dashBullBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 4, "Losses", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 4, str.tostring(statLosses), dashTextColor, dashBearBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 5, "BE", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 5, str.tostring(statBreakevens), dashTextColor, dashBeBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 6, "Win Rate", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 6, f_fmtPct(dashWinRate), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 7, "Net R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 7, f_fmtR(statNetR), dashTextColor, netRBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 8, "Avg R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 8, f_fmtR(dashAvgR), dashTextColor, avgRBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 9, "Profit Factor", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 9, pfTxt, dashTextColor, pfBg, dashboardTextSizeInput)
 
 int activeTradeDir = 0
 if array.size(tradeDirs) > 0
