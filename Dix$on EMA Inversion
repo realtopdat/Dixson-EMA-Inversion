@@ -12,6 +12,7 @@ string GROUP_IFVG = "• IFVG & Entry Logic ━━━━━━━━━━━━
 string GROUP_ENTRY = "• Entry Visuals ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_DISPLAY = "• Display Caps & Visibility ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_TRADE = "• Trade Levels ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+string GROUP_DASHBOARD = "• Dashboard ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_ALERTS = "• Alerts ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 //━━━━━━━━━━━━━━━━━━━━
@@ -109,6 +110,16 @@ tradeNeutralCandleColor = input.color(color.new(color.gray, 0), "No Trade", inli
 showTradeCandleColors = input.bool(true, "Color Candles", inline="TRD_5", group=GROUP_TRADE, tooltip="Enable or disable trade-direction candle coloring.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
+// Dashboard
+//━━━━━━━━━━━━━━━━━━━━
+showLiveDashboard = input.bool(true, "Show Live Panel", inline="DASH_1", group=GROUP_DASHBOARD, display=display.none)
+liveDashboardPositionInput = input.string("Top Right", "Live Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], inline="DASH_1", group=GROUP_DASHBOARD, display=display.none)
+showPerformanceDashboard = input.bool(true, "Show Performance Panel", inline="DASH_2", group=GROUP_DASHBOARD, display=display.none)
+performanceDashboardPositionInput = input.string("Bottom Right", "Performance Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], inline="DASH_2", group=GROUP_DASHBOARD, display=display.none)
+dashboardTextSizeInput = input.string("Tiny", "Text Size", options=["Tiny", "Small", "Normal"], inline="DASH_3", group=GROUP_DASHBOARD, display=display.none)
+dashboardBgOpacity = input.int(15, "BG Opacity", minval=0, maxval=100, inline="DASH_3", group=GROUP_DASHBOARD, display=display.none)
+
+//━━━━━━━━━━━━━━━━━━━━
 // Alerts
 //━━━━━━━━━━━━━━━━━━━━
 // Alerts are gated by the Master > Enable Alerts toggle.
@@ -154,6 +165,37 @@ f_sizeValue(float top, float bottom, string mode, float atrV) =>
 
 f_labelSize(string s) =>
     s == "Tiny" ? size.tiny : s == "Small" ? size.small : s == "Large" ? size.large : s == "Huge" ? size.huge : size.normal
+
+f_dashboardPosition(string s) =>
+    s == "Top Left" ? position.top_left :
+     s == "Bottom Right" ? position.bottom_right :
+     s == "Bottom Left" ? position.bottom_left :
+     position.top_right
+
+f_dashboardTextSize(string s) =>
+    s == "Small" ? size.small :
+     s == "Normal" ? size.normal :
+     size.tiny
+
+f_fmtPrice(float v) =>
+    na(v) ? "—" : str.tostring(v, format.mintick)
+
+f_fmtPct(float v) =>
+    na(v) ? "—" : str.tostring(v, "#.0") + "%"
+
+f_fmtR(float v) =>
+    na(v) ? "—" : (v > 0 ? "+" : "") + str.tostring(v, "#.00") + "R"
+
+f_tpRValue(string tpMode) =>
+    tpMode == "1R" ? 1.0 :
+     tpMode == "3R" ? 3.0 :
+     2.0
+
+f_dashClampTransp(int t) =>
+    math.min(100, math.max(0, t))
+
+f_dashCell(table tbl, int col, int row, string txt, color txtColor, color bgColor, string txtSize) =>
+    table.cell(tbl, col, row, txt, text_color=txtColor, bgcolor=bgColor, text_size=f_dashboardTextSize(txtSize))
 
 f_cleanupVisuals(array<box> boxesArr, array<line> linesArr, int cap) =>
     if cap > 0
@@ -355,6 +397,29 @@ var float[] tradeTps = array.new_float()
 var float[] tradeEntries = array.new_float()
 var bool[] tradeMovedToEntry = array.new_bool()
 
+var int[] dashTradeDirs = array.new_int()
+var bool[] dashTradeActive = array.new_bool()
+var float[] dashTradeEntries = array.new_float()
+var float[] dashTradeStops = array.new_float()
+var float[] dashTradeBEs = array.new_float()
+var float[] dashTradeTPs = array.new_float()
+var float[] dashTradeRisks = array.new_float()
+var bool[] dashTradeMovedToEntry = array.new_bool()
+
+var int statTotalSignals = 0
+var int statLongSignals = 0
+var int statShortSignals = 0
+var int statClosedTrades = 0
+var int statWins = 0
+var int statLosses = 0
+var int statBreakevens = 0
+var float statNetR = 0.0
+var float statGrossWinR = 0.0
+var float statGrossLossR = 0.0
+
+var table liveDashboard = table.new(position.top_right, 2, 8, bgcolor=color.new(color.black, 100), frame_color=color.new(color.gray, 70), frame_width=1, border_color=color.new(color.gray, 80), border_width=1)
+var table performanceDashboard = table.new(position.bottom_right, 2, 11, bgcolor=color.new(color.black, 100), frame_color=color.new(color.gray, 70), frame_width=1, border_color=color.new(color.gray, 80), border_width=1)
+
 var int latestBullFvgBar = na
 var float latestBullTop = na
 var float latestBullBottom = na
@@ -545,6 +610,23 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
     if touchWindowOk and confirmBullClose and trendBullOk
         latestBearSignalDone := true
         bullEntryAlert := true
+        statTotalSignals += 1
+        statLongSignals += 1
+        float dashEntry = close
+        float dashStop = math.min(bullConfirmSwingLow, dashEntry - syminfo.mintick)
+        float dashRisk = math.max(dashEntry - dashStop, syminfo.mintick)
+        float dashBE = dashEntry + dashRisk
+        float dashR2 = dashEntry + dashRisk * 2.0
+        float dashR3 = dashEntry + dashRisk * 3.0
+        float dashTP = endTradeLevel == "1R" ? dashBE : endTradeLevel == "3R" ? dashR3 : dashR2
+        array.push(dashTradeDirs, 1)
+        array.push(dashTradeActive, true)
+        array.push(dashTradeEntries, dashEntry)
+        array.push(dashTradeStops, dashStop)
+        array.push(dashTradeBEs, dashBE)
+        array.push(dashTradeTPs, dashTP)
+        array.push(dashTradeRisks, dashRisk)
+        array.push(dashTradeMovedToEntry, false)
         if showEntries
             lb = label.new(bar_index, low - entryOffset, "Long", style=label.style_label_up, color=color.new(bullFvgColor, 0), textcolor=color.white, size=labelSz)
             array.push(bullEntries, lb)
@@ -601,6 +683,23 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
     if touchWindowOk and confirmBearClose and trendBearOk
         latestBullSignalDone := true
         bearEntryAlert := true
+        statTotalSignals += 1
+        statShortSignals += 1
+        float dashEntry = close
+        float dashStop = math.max(bearConfirmSwingHigh, dashEntry + syminfo.mintick)
+        float dashRisk = math.max(dashStop - dashEntry, syminfo.mintick)
+        float dashBE = dashEntry - dashRisk
+        float dashR2 = dashEntry - dashRisk * 2.0
+        float dashR3 = dashEntry - dashRisk * 3.0
+        float dashTP = endTradeLevel == "1R" ? dashBE : endTradeLevel == "3R" ? dashR3 : dashR2
+        array.push(dashTradeDirs, -1)
+        array.push(dashTradeActive, true)
+        array.push(dashTradeEntries, dashEntry)
+        array.push(dashTradeStops, dashStop)
+        array.push(dashTradeBEs, dashBE)
+        array.push(dashTradeTPs, dashTP)
+        array.push(dashTradeRisks, dashRisk)
+        array.push(dashTradeMovedToEntry, false)
         if showEntries
             lb = label.new(bar_index, high + entryOffset, "Short", style=label.style_label_down, color=color.new(bearFvgColor, 0), textcolor=color.white, size=labelSz)
             array.push(bearEntries, lb)
@@ -757,6 +856,153 @@ if showTradeHistory and tradeLevelHistory > 0
             endedCount -= 1
         else
             break
+
+float dashHitHi = tradeHitMode == "Body" ? math.max(open, close) : high
+float dashHitLo = tradeHitMode == "Body" ? math.min(open, close) : low
+if array.size(dashTradeDirs) > 0
+    for i = array.size(dashTradeDirs) - 1 to 0
+        bool dashActive = array.get(dashTradeActive, i)
+        if dashActive
+            int dir = array.get(dashTradeDirs, i)
+            float entryV = array.get(dashTradeEntries, i)
+            float stopV = array.get(dashTradeStops, i)
+            float beV = array.get(dashTradeBEs, i)
+            float tpV = array.get(dashTradeTPs, i)
+            float riskV = array.get(dashTradeRisks, i)
+            bool movedToEntry = array.get(dashTradeMovedToEntry, i)
+            bool beHit = dir == 1 ? dashHitHi >= beV : dashHitLo <= beV
+            if not movedToEntry and beHit
+                array.set(dashTradeMovedToEntry, i, true)
+                array.set(dashTradeStops, i, entryV)
+                stopV := entryV
+                movedToEntry := true
+            bool tpHit = dir == 1 ? dashHitHi >= tpV : dashHitLo <= tpV
+            bool stopHit = dir == 1 ? dashHitLo <= stopV : dashHitHi >= stopV
+            bool endNow = tpHit or stopHit
+            if endNow
+                array.set(dashTradeActive, i, false)
+                float realizedR = na
+                if tpHit
+                    realizedR := f_tpRValue(endTradeLevel)
+                    statWins += 1
+                    statGrossWinR += realizedR
+                else if stopHit and movedToEntry
+                    realizedR := 0.0
+                    statBreakevens += 1
+                else if stopHit
+                    realizedR := -1.0
+                    statLosses += 1
+                    statGrossLossR += 1.0
+                if not na(realizedR)
+                    statClosedTrades += 1
+                    statNetR += realizedR
+
+int dashBiasDir = shortEmaLogic > logicEma ? 1 : shortEmaLogic < logicEma ? -1 : 0
+string dashBiasTxt = dashBiasDir == 1 ? "Bullish" : dashBiasDir == -1 ? "Bearish" : "Neutral"
+
+int dashActiveIndex = na
+if array.size(dashTradeActive) > 0
+    for i = array.size(dashTradeActive) - 1 to 0
+        if array.get(dashTradeActive, i)
+            dashActiveIndex := i
+            break
+
+int dashActiveDir = 0
+float dashActiveEntry = na
+float dashActiveStop = na
+float dashActiveBE = na
+float dashActiveTP = na
+float dashActiveRisk = na
+if not na(dashActiveIndex)
+    dashActiveDir := array.get(dashTradeDirs, dashActiveIndex)
+    dashActiveEntry := array.get(dashTradeEntries, dashActiveIndex)
+    dashActiveStop := array.get(dashTradeStops, dashActiveIndex)
+    dashActiveBE := array.get(dashTradeBEs, dashActiveIndex)
+    dashActiveTP := array.get(dashTradeTPs, dashActiveIndex)
+    dashActiveRisk := array.get(dashTradeRisks, dashActiveIndex)
+string dashActiveTradeTxt = dashActiveDir == 1 ? "Long" : dashActiveDir == -1 ? "Short" : "None"
+
+float dashCurrentR = na
+if dashActiveDir == 1 and not na(dashActiveEntry) and not na(dashActiveRisk) and dashActiveRisk > 0
+    dashCurrentR := (close - dashActiveEntry) / dashActiveRisk
+else if dashActiveDir == -1 and not na(dashActiveEntry) and not na(dashActiveRisk) and dashActiveRisk > 0
+    dashCurrentR := (dashActiveEntry - close) / dashActiveRisk
+
+float dashWinRate = statClosedTrades > 0 ? statWins / statClosedTrades * 100.0 : na
+float dashAvgR = statClosedTrades > 0 ? statNetR / statClosedTrades : na
+float dashProfitFactor = statGrossLossR > 0 ? statGrossWinR / statGrossLossR : na
+
+int dashBaseTransp = f_dashClampTransp(dashboardBgOpacity)
+int dashLabelTransp = f_dashClampTransp(dashboardBgOpacity + 20)
+int dashNeutralTransp = f_dashClampTransp(dashboardBgOpacity + 35)
+color dashHeaderBg = color.new(color.black, dashBaseTransp)
+color dashLabelBg = color.new(color.black, dashLabelTransp)
+color dashNeutralBg = color.new(color.gray, dashNeutralTransp)
+color dashBullBg = color.new(bullFvgColor, dashBaseTransp)
+color dashBearBg = color.new(bearFvgColor, dashBaseTransp)
+color dashBeBg = color.new(beLineColor, dashBaseTransp)
+color dashTextColor = color.white
+
+if barstate.islast
+    table.set_position(liveDashboard, f_dashboardPosition(liveDashboardPositionInput))
+    table.set_position(performanceDashboard, f_dashboardPosition(performanceDashboardPositionInput))
+
+    if not showLiveDashboard
+        table.clear(liveDashboard, 0, 0, 1, 7)
+    else
+        table.clear(liveDashboard, 0, 0, 1, 7)
+        color biasBg = dashBiasDir == 1 ? dashBullBg : dashBiasDir == -1 ? dashBearBg : dashNeutralBg
+        color activeBg = dashActiveDir == 1 ? dashBullBg : dashActiveDir == -1 ? dashBearBg : dashNeutralBg
+        color priceRowBg = dashActiveDir == 0 ? dashNeutralBg : dashLabelBg
+        color beRowBg = dashActiveDir == 0 ? dashNeutralBg : dashBeBg
+        color rBg = na(dashCurrentR) ? dashNeutralBg : dashCurrentR > 0 ? dashBullBg : dashCurrentR < 0 ? dashBearBg : dashNeutralBg
+        f_dashCell(liveDashboard, 0, 0, "Dix$on Live", dashTextColor, dashHeaderBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 0, syminfo.ticker + " " + timeframe.period, dashTextColor, dashHeaderBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 1, "Bias", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 1, dashBiasTxt, dashTextColor, biasBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 2, "Active Trade", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 2, dashActiveTradeTxt, dashTextColor, activeBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 3, "Entry", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 3, f_fmtPrice(dashActiveEntry), dashTextColor, priceRowBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 4, "Stop", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 4, f_fmtPrice(dashActiveStop), dashTextColor, priceRowBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 5, "BE / 1R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 5, f_fmtPrice(dashActiveBE), dashTextColor, beRowBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 6, "TP", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 6, f_fmtPrice(dashActiveTP), dashTextColor, priceRowBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 0, 7, "Current R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(liveDashboard, 1, 7, f_fmtR(dashCurrentR), dashTextColor, rBg, dashboardTextSizeInput)
+
+    if not showPerformanceDashboard
+        table.clear(performanceDashboard, 0, 0, 1, 10)
+    else
+        table.clear(performanceDashboard, 0, 0, 1, 10)
+        color netRBg = statNetR > 0 ? dashBullBg : statNetR < 0 ? dashBearBg : dashNeutralBg
+        color avgRBg = na(dashAvgR) ? dashNeutralBg : dashAvgR > 0 ? dashBullBg : dashAvgR < 0 ? dashBearBg : dashNeutralBg
+        color pfBg = na(dashProfitFactor) ? dashNeutralBg : dashProfitFactor >= 1.0 ? dashBullBg : dashBearBg
+        string pfTxt = na(dashProfitFactor) ? "—" : str.tostring(dashProfitFactor, "#.00")
+        f_dashCell(performanceDashboard, 0, 0, "Dix$on Performance", dashTextColor, dashHeaderBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 0, syminfo.ticker + " " + timeframe.period, dashTextColor, dashHeaderBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 1, "Signals", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 1, str.tostring(statTotalSignals), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 2, "Long / Short", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 2, str.tostring(statLongSignals) + " / " + str.tostring(statShortSignals), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 3, "Closed Trades", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 3, str.tostring(statClosedTrades), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 4, "Wins", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 4, str.tostring(statWins), dashTextColor, dashBullBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 5, "Losses", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 5, str.tostring(statLosses), dashTextColor, dashBearBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 6, "BE", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 6, str.tostring(statBreakevens), dashTextColor, dashBeBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 7, "Win Rate", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 7, f_fmtPct(dashWinRate), dashTextColor, dashNeutralBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 8, "Net R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 8, f_fmtR(statNetR), dashTextColor, netRBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 9, "Avg R", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 9, f_fmtR(dashAvgR), dashTextColor, avgRBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 0, 10, "Profit Factor", dashTextColor, dashLabelBg, dashboardTextSizeInput)
+        f_dashCell(performanceDashboard, 1, 10, pfTxt, dashTextColor, pfBg, dashboardTextSizeInput)
 
 int activeTradeDir = 0
 if array.size(tradeDirs) > 0
