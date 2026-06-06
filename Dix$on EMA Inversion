@@ -9,6 +9,7 @@ string GROUP_SHORT_MA = "• Short MA Settings ━━━━━━━━━━━
 string GROUP_LONG_MA = "• Long MA Settings ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_FVG = "• FVG Core Settings ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_IFVG = "• IFVG & Entry Logic ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+string GROUP_ADX_DMI = "• ADX / DMI Filter ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_ENTRY = "• Entry Visuals ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_DISPLAY = "• Display Caps & Visibility ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_TRADE = "• Trade Levels ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -77,6 +78,16 @@ emaTouchBarsBefore = input.int(3, "Touch Bars Before", minval=0, inline="LOGIC_1
 emaTouchBarsAfter = input.int(3, "Touch Bars After", minval=0, inline="LOGIC_1", group=GROUP_IFVG, display=display.none)
 
 emaTouchType = input.string("Either", "EMA Touch Type", options=["Wick Touch", "Body Touch", "Either"], inline="LOGIC_2", group=GROUP_IFVG, tooltip="Touch type used by entry qualification: wick touch, body touch, or either.", display=display.none)
+
+//━━━━━━━━━━━━━━━━━━━━
+// ADX / DMI Filter
+//━━━━━━━━━━━━━━━━━━━━
+useAdxDmiFilter = input.bool(false, "Use ADX/DMI Filter", inline="ADX_1", group=GROUP_ADX_DMI, tooltip="Optional trend-strength and direction filter for IFVG entries. Disabled by default to preserve original signal behavior.", display=display.none)
+adxDiLength = input.int(14, "DI Len", minval=1, inline="ADX_1", group=GROUP_ADX_DMI, display=display.none)
+adxSmoothing = input.int(14, "ADX Smooth", minval=1, maxval=100, inline="ADX_1", group=GROUP_ADX_DMI, display=display.none)
+minAdxValue = input.float(20.0, "Min ADX", minval=0.0, step=0.5, inline="ADX_2", group=GROUP_ADX_DMI, tooltip="Minimum ADX required when the ADX/DMI filter is enabled. Common test values are 20, 22, and 25.", display=display.none)
+adxDmiMode = input.string("ADX + DI Direction", "Mode", options=["ADX Only", "ADX + DI Direction"], inline="ADX_2", group=GROUP_ADX_DMI, display=display.none)
+requireAdxRising = input.bool(false, "ADX Rising", inline="ADX_3", group=GROUP_ADX_DMI, tooltip="When enabled, entries also require current ADX to be greater than the prior bar's ADX.", display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Entry Visuals
@@ -330,11 +341,22 @@ plotEma = longVisualSmooth
 shortEmaLogic = shortLogicSeries
 shortEmaPlot = shortVisualSmooth
 
+[dmiPlus, dmiMinus, dmiAdx] = ta.dmi(adxDiLength, adxSmoothing)
+bool adxStrengthOk = not na(dmiAdx) and dmiAdx >= minAdxValue
+bool adxRisingOk = not requireAdxRising or (not na(dmiAdx) and not na(dmiAdx[1]) and dmiAdx > dmiAdx[1])
+bool dmiBullDirectionOk = adxDmiMode == "ADX Only" or dmiPlus > dmiMinus
+bool dmiBearDirectionOk = adxDmiMode == "ADX Only" or dmiMinus > dmiPlus
+bool adxDmiBullOk = not useAdxDmiFilter or (adxStrengthOk and adxRisingOk and dmiBullDirectionOk)
+bool adxDmiBearOk = not useAdxDmiFilter or (adxStrengthOk and adxRisingOk and dmiBearDirectionOk)
+
 longEmaColorDyn = close >= logicEma ? longBullColor : longBearColor
 shortEmaColorDyn = close >= shortEmaLogic ? shortBullColor : shortBearColor
 
 longPlot = plot(showEma ? plotEma : na, "Long MA", color=color.new(longEmaColorDyn, longMaOpacity), linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short MA", color=color.new(shortEmaColorDyn, shortMaOpacity), linewidth=shortEmaWidth)
+plot(dmiAdx, "+ ADX/DMI Filter: ADX", display=display.data_window)
+plot(dmiPlus, "+ ADX/DMI Filter: +DI", display=display.data_window)
+plot(dmiMinus, "+ ADX/DMI Filter: -DI", display=display.data_window)
 
 // Hold-forward fill references to prevent tiny color gaps on MTF update transitions.
 longFillState = nz(plotEma, plotEma[1])
@@ -607,7 +629,7 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
     touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBearIfvgBar
     confirmBullClose = close > logicEma
     trendBullOk = shortEmaLogic > logicEma
-    if touchWindowOk and confirmBullClose and trendBullOk
+    if touchWindowOk and confirmBullClose and trendBullOk and adxDmiBullOk
         latestBearSignalDone := true
         bullEntryAlert := true
         statTotalSignals += 1
@@ -680,7 +702,7 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
     touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBullIfvgBar
     confirmBearClose = close < logicEma
     trendBearOk = shortEmaLogic < logicEma
-    if touchWindowOk and confirmBearClose and trendBearOk
+    if touchWindowOk and confirmBearClose and trendBearOk and adxDmiBearOk
         latestBullSignalDone := true
         bearEntryAlert := true
         statTotalSignals += 1
