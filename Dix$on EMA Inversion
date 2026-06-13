@@ -9,6 +9,7 @@ string GROUP_SHORT_MA = "• Short MA Settings ━━━━━━━━━━━
 string GROUP_LONG_MA = "• Long MA Settings ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_FVG = "• FVG Core Settings ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_IFVG = "• IFVG & Entry Logic ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+string GROUP_SESSION_VWAP = "• Session VWAP Filter ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_ENTRY = "• Entry Visuals ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_DISPLAY = "• Display Caps & Visibility ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 string GROUP_TRADE = "• Trade Levels ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -77,6 +78,14 @@ emaTouchBarsBefore = input.int(3, "Touch Bars Before", minval=0, inline="LOGIC_1
 emaTouchBarsAfter = input.int(3, "Touch Bars After", minval=0, inline="LOGIC_1", group=GROUP_IFVG, display=display.none)
 
 emaTouchType = input.string("Either", "EMA Touch Type", options=["Wick Touch", "Body Touch", "Either"], inline="LOGIC_2", group=GROUP_IFVG, tooltip="Touch type used by entry qualification: wick touch, body touch, or either.", display=display.none)
+
+//━━━━━━━━━━━━━━━━━━━━
+// Session VWAP Filter
+//━━━━━━━━━━━━━━━━━━━━
+useSessionVwapFilter = input.bool(false, "Use VWAP Filter", inline="VWAP_1", group=GROUP_SESSION_VWAP, tooltip="Optional session-anchored VWAP filter for IFVG entries. Longs require price above VWAP and shorts require price below VWAP when enabled.", display=display.none)
+showSessionVwap = input.bool(true, "Show VWAP", inline="VWAP_1", group=GROUP_SESSION_VWAP, display=display.none)
+sessionVwapSource = input.source(hlc3, "Source", inline="VWAP_2", group=GROUP_SESSION_VWAP, display=display.none)
+sessionVwapWidth = input.int(2, "Width", minval=1, maxval=5, inline="VWAP_2", group=GROUP_SESSION_VWAP, display=display.none)
 
 //━━━━━━━━━━━━━━━━━━━━
 // Entry Visuals
@@ -330,11 +339,19 @@ plotEma = longVisualSmooth
 shortEmaLogic = shortLogicSeries
 shortEmaPlot = shortVisualSmooth
 
+sessionVwap = ta.vwap(sessionVwapSource)
+sessionVwapBull = not na(sessionVwap) and close > sessionVwap
+sessionVwapBear = not na(sessionVwap) and close < sessionVwap
+sessionVwapBullOk = not useSessionVwapFilter or sessionVwapBull
+sessionVwapBearOk = not useSessionVwapFilter or sessionVwapBear
+
 longEmaColorDyn = close >= logicEma ? longBullColor : longBearColor
 shortEmaColorDyn = close >= shortEmaLogic ? shortBullColor : shortBearColor
+sessionVwapColor = sessionVwapBull ? bullFvgColor : sessionVwapBear ? bearFvgColor : color.gray
 
 longPlot = plot(showEma ? plotEma : na, "Long MA", color=color.new(longEmaColorDyn, longMaOpacity), linewidth=longEmaWidth)
 shortPlot = plot(showEma ? shortEmaPlot : na, "Short MA", color=color.new(shortEmaColorDyn, shortMaOpacity), linewidth=shortEmaWidth)
+plot(showSessionVwap ? sessionVwap : na, "Session VWAP", color=sessionVwapColor, linewidth=sessionVwapWidth)
 
 // Hold-forward fill references to prevent tiny color gaps on MTF update transitions.
 longFillState = nz(plotEma, plotEma[1])
@@ -607,7 +624,7 @@ if latestBearActive and latestBearIfvgConfirmed and not latestBearSignalDone and
     touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBearIfvgBar
     confirmBullClose = close > logicEma
     trendBullOk = shortEmaLogic > logicEma
-    if touchWindowOk and confirmBullClose and trendBullOk
+    if touchWindowOk and confirmBullClose and trendBullOk and sessionVwapBullOk
         latestBearSignalDone := true
         bullEntryAlert := true
         statTotalSignals += 1
@@ -680,7 +697,7 @@ if latestBullActive and latestBullIfvgConfirmed and not latestBullSignalDone and
     touchWindowOk = not na(lastEmaTouchBar) and lastEmaTouchBar >= touchWindowStart and lastEmaTouchBar <= latestBullIfvgBar
     confirmBearClose = close < logicEma
     trendBearOk = shortEmaLogic < logicEma
-    if touchWindowOk and confirmBearClose and trendBearOk
+    if touchWindowOk and confirmBearClose and trendBearOk and sessionVwapBearOk
         latestBullSignalDone := true
         bearEntryAlert := true
         statTotalSignals += 1
@@ -897,7 +914,8 @@ if array.size(dashTradeDirs) > 0
                     statClosedTrades += 1
                     statNetR += realizedR
 
-int dashBiasDir = shortEmaLogic > logicEma ? 1 : shortEmaLogic < logicEma ? -1 : 0
+int dashMaBiasDir = shortEmaLogic > logicEma ? 1 : shortEmaLogic < logicEma ? -1 : 0
+int dashBiasDir = dashMaBiasDir == 1 and sessionVwapBullOk ? 1 : dashMaBiasDir == -1 and sessionVwapBearOk ? -1 : 0
 string dashBiasTxt = dashBiasDir == 1 ? "Bullish" : dashBiasDir == -1 ? "Bearish" : "Neutral"
 
 int dashActiveIndex = na
